@@ -1,0 +1,22 @@
+[
+    {"name": "Bohemian Rhapsody", "artist": "Queen", "genres": ["classic rock", "glam rock", "rock"]},
+    {"name": "Midnight City", "artist": "M83", "genres": ["indietronica", "metropopolis", "synth-pop"]},
+    {"name": "Sicko Mode", "artist": "Travis Scott", "genres": ["hip hop", "rap", "trap"]},
+    {"name": "Levitating", "artist": "Dua Lipa", "genres": ["dance pop", "pop"]},
+    {"name": "So What", "artist": "Miles Davis", "genres": ["cool jazz", "hard bop", "jazz"]},
+    {"name": "Weightless", "artist": "Marconi Union", "genres": ["ambient", "chill"]},
+    {"name": "The Four Seasons", "artist": "Antonio Vivaldi", "genres": ["baroque", "classical"]},
+    {"name": "Jolene", "artist": "Dolly Parton", "genres": ["country"]},
+    {"name": "Strobe", "artist": "deadmau5", "genres": ["progressive house", "edm"]},
+    {"name": "Superstition", "artist": "Stevie Wonder", "genres": ["funk", "soul"]},
+    {"name": "Smells Like Teen Spirit", "artist": "Nirvana", "genres": ["grunge", "rock"]},
+    {"name": "Lofi Beat", "artist": "Lofi Girl", "genres": ["lo-fi", "chillhop"]},
+    {"name": "Bad Guy", "artist": "Billie Eilish", "genres": ["art pop", "pop"]},
+    {"name": "Enter Sandman", "artist": "Metallica", "genres": ["metal", "thrash metal"]},
+    {"name": "Clair de Lune", "artist": "Claude Debussy", "genres": ["classical", "piano"]},
+    {"name": "Lose Yourself", "artist": "Eminem", "genres": ["hip hop", "rap"]},
+    {"name": "Take Five", "artist": "Dave Brubeck", "genres": ["jazz"]},
+    {"name": "One More Time", "artist": "Daft Punk", "genres": ["electro", "house"]},
+    {"name": "Landslide", "artist": "Fleetwood Mac", "genres": ["classic rock", "folk"]},
+    {"name": "Bangarang", "artist": "Skrillex", "genres": ["dubstep", "edm"]}
+]

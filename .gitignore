@@ -1,0 +1,31 @@
+# Environment variables (Sensitive!)
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+
+# Python compilation
+__pycache__/
+*.pyc
+
+# Testing cache
+.pytest_cache/
+
+# Spotify/Spotipy Cache (Contains tokens!)
+.cache
+
+# Logs and Temporary Output
+logs/
+*.log
+test_output.txt
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Note: state.json is NOT ignored because we want to track it in git for the GitHub Action to use.
+# If you prefer strictly local state that doesn't sync, uncomment the line below:
+# state.json
