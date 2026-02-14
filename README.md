@@ -1,14 +1,14 @@
 # Spotify Auto-Sorter 🎵
 
-A robust, automated utility designed to organise your "Liked Songs" into genre-specific playlists. Engineered for high reliability, it navigates the technical challenges of the 2026 Spotify API landscape using intelligent synchronisation and fallback logic.
+A robust, automated utility designed to organise your "Liked Songs" into genre-specific playlists. Engineered for high reliability, it navigates the technical challenges of the 2026 Spotify API landscape using intelligent synchronisation and external metadata integration.
 
 ## 🚀 Key Features
 
--   **Intelligent Synchronisation**: Categorises tracks based on artist and album metadata using a customisable priority system.
--   **Incremental Updates**: Leverages `state.json` to process only new additions, minimising API overhead and ensuring efficient performance.
--   **2026 API Compliance**: Engineered to handle deprecated endpoints and unreliable genre data through sophisticated fallback strategies.
+-   **Precision Tagging**: Categorises tracks based on specific song-level tags fetched via the **Last.fm API**, with an intelligent fallback to artist-level metadata.
+-   **SQLite Database**: Leverages `state.db` to create a persistent memory of the processed tracks, unclassified tracks, and errors. Also processes only new additions, minimising API overhead and ensuring efficient performance.
+-   **2026 Spotify API Compliance**: Engineered to handle the changes made to the **Spotify Web API in 2026**, including deprecated endpoints and removed genre fields through direct REST calls and modern auth patterns.
+-   **Guaranteed Resilience**: Uses a **Single-Item Processing** strategy to bypass aggressive Web Application Firewalls (WAF) and batch request failures.
 -   **Safe Deployment**: Appends tracks to playlists non-destructively, preserving any manual modifications you have made.
--   **Fully Automated**: Optimised for daily execution via GitHub Actions.
 
 ---
 
@@ -19,46 +19,65 @@ The system is built on a modular architecture to ensure maintainability and scal
 ```mermaid
 graph TD
     A[main.py] -->|Orchestrates| B[spotify_client.py]
+    A -->|Fetches Tags| G[lastfm_client.py]
     A -->|Processes| C[sorter.py]
-    A -->|Manages| D[state.py]
+    A -->|Persists State| D[state.py]
+    D -->|Reads/Writes| I[(SQLite DB)]
     B -->|API Support| E[Spotify Web API]
+    G -->|Tag Data| H[Last.fm API]
     C -->|Configuration| F[config.py]
 ```
 
--   **`main.py`**: The application's entry point, managing the high-level workflow and error handling.
--   **`spotify_client.py`**: A dedicated API abstraction layer that manages authentication, batching, and deprecation fallbacks.
--   **`sorter.py`**: The core logic engine that performs keyword-based classification and bucket prioritisation.
--   **`config.py`**: Centralises all configuration, including complex genre mappings and preference toggles.
--   **`state.py`**: Handles the persistence of synchronisation metadata to enable incremental processing.
+-   **`main.py`**: The application's entry point, managing the high-level workflow, caching, and error handling. It now supports multi-playlist assignment for tracks.
+-   **`spotify_client.py`**: A dedicated API abstraction layer. Uses **batched requests** (100 items/call) to the modern `/v1/playlists/{id}/items` endpoint for maximum performance.
+-   **`lastfm_client.py`**: Interface for the Last.fm API. Fetched tags are now **cached in SQLite**, preventing redundant API calls.
+-   **`sorter.py`**: The core logic engine that performs keyword-based classification.
+-   **`config.py`**: Centralises all configuration, including complex genre mappings and API credentials.
+-   **`state.py`**: Manages the local SQLite database (`state.db`). This database tracks:
+    -   Last run timestamp (for incremental sync).
+    -   Processed track URIs (to prevent duplicates).
+    -   Playlist snapshots (to detect external changes).
+    -   **Artist Tag Cache** (to minimise Last.fm usage).
 
 ---
 
 ## 🧠 Solved Challenges
 
-### 1. Robust Genre Detection
-With the evolution of Spotify's metadata in 2026, artist-level genres have become less reliable. This project implements a **layered lookup strategy**: if artist data is insufficient, it automatically falls back to album-level metadata to ensure accurate categorisation.
+### 1. External Genre Detection & Caching
+Spotify has deprecated standard genre fields. We use **Last.fm** as a primary metadata source. To respect API limits and improve speed, all fetched artist tags are **cached in a local SQLite database**. This means the script gets faster the more you use it.
 
-### 2. API Resilience
-To address the removal of several standard endpoints, the client uses a **dynamic request dispatcher**. It identifies and avoids legacy endpoints, such as the direct user-playlist creation routes, in favour of the modern `/me/playlists` architecture.
+### 2. Multi-Genre Sorting
+Standard sorters often pick the "first match". Our system intelligently assigns a single track to **multiple playlists** if it matches multiple genres (e.g., a "Rock" song that fits "Workout" vibes will go to both), ensuring a comprehensive library organization.
 
-### 3. Performance & Rate Limiting
-Managing large libraries requires careful API handling. The system uses **intelligent batching** for all metadata retrieval and playlist updates, ensuring stay well within Spotify's rate limits while maintaining high throughput.
+### 3. API Resilience & Batching
+To handle large libraries and strict API limits:
+-   **Batch Processing**: Tracks are added in groups of 100 using the optimised `items` endpoint.
+-   **Rate Limiting**: A "Leaky Bucket" algorithm ensures we never hit Spotify's 429 errors.
+-   **State Tracking**: We track `snapshot_id`s to avoid re-scanning playlists that haven't changed.
 
 ---
 
 ## 🛠️ Installation & Setup
 
 ### 1. Prerequisites
--   **Spotify Premium Account**: Required for API dashboard access as of February 2026.
--   **Python 3.9+**: The project relies on modern Python features for stability.
+-   **Spotify Premium Account**
+-   **Last.fm API Account**
+-   **Python 3.9+**
 
 ### 2. Local Setup
 1.  Clone the repository and install the required dependencies:
     ```bash
     pip install -r requirements.txt
     ```
-2.  Configure your credentials in a `.env` file (`SPOTIPY_CLIENT_ID` and `SPOTIPY_CLIENT_SECRET`).
-3.  Execute the authentication helper to generate your long-lived refresh token:
+2.  Configure your credentials in a `.env` file (see `.env.example`):
+    ```env
+    SPOTIPY_CLIENT_ID=...
+    SPOTIPY_CLIENT_SECRET=...
+    SPOTIPY_REFRESH_TOKEN=...
+    LASTFM_API_KEY=...
+    SPOTIPY_REDIRECT_URI=http://127.0.0.1:8888/callback
+    ```
+3.  Execute the authentication helper to generate your Spotify refresh token:
     ```bash
     python auth_helper.py
     ```
@@ -66,16 +85,20 @@ Managing large libraries requires careful API handling. The system uses **intell
 ---
 
 ## 🧪 Verification
-The included test suite provides comprehensive coverage of the sorting and prioritisation logic:
+The included test suite and dry-run mode provide comprehensive coverage:
 ```bash
+# Run logic tests
 pytest test_sorter_logic.py
+
+# Perform a safe dry run (config.DRY_RUN = True)
+python main.py
 ```
 
 ## 🔒 Security & Privacy
--   **Credential Isolation**: Sensitive tokens are managed via environment variables and local cache, strictly excluded from version control via `.gitignore`.
--   **Auditability**: Use `DRY_RUN = True` in `config.py` to preview all actions without affecting your Spotify library.
+-   **Credential Isolation**: Sensitive tokens are managed via environment variables and local cache.
+-   **State Persistence**: `state.db` is tracked in git (excluding temporary WAL files) to allow GitHub Actions to maintain state between runs.
 
 ---
 
 ## 📄 Licence
-This project is licensed under the **MIT Licence**. You are free to use, modify, and distribute the software, provided the original copyright notice is retained. See the [LICENSE](LICENSE) file for the full legal text.
+This project is licensed under the **MIT Licence**. See the [LICENSE](LICENSE) file for details.

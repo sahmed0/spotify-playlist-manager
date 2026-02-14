@@ -26,6 +26,8 @@ test_output.txt
 .DS_Store
 Thumbs.db
 
-# Note: state.json is NOT ignored because we want to track it in git for the GitHub Action to use.
-# If you prefer strictly local state that doesn't sync, uncomment the line below:
-# state.json
+# SQLite Database (Local State)
+# state.db is NOT ignored so it can sync to GitHub Actions
+state.db-shm
+state.db-wal
+

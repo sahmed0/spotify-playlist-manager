@@ -1,16 +1,28 @@
+"""
+Main entry point for the Spotify Sorter application.
+"""
 import config
 import state
 from spotify_client import SpotifyClient
-from sorter import categorize_tracks
+from sorter import categorise_tracks
+from lastfm_client import LastFMClient
+import time
+
 
 def main():
+    """
+    Execute the main logic of the Spotify Sorter.
+
+    Authenticates with Spotify, fetches liked songs, retrieves genre tags from Last.fm,
+    sorts songs into playlists, and syncs changes to Spotify.
+    """
     print("Starting Spotify Sorter...")
     
     # Check for Dry Run
     if config.DRY_RUN:
         print(">>> DRY RUN MODE ENABLED <<<")
 
-    # 0. Load State
+    # 1. Load State
     last_run = state.load_state()
     if last_run:
         print(f"Last sync detected: {last_run}")
@@ -18,15 +30,28 @@ def main():
     else:
         print("No previous state found. Running full sync.")
     try:
-        client = SpotifyClient()
+        client = SpotifyClient(dry_run=config.DRY_RUN)
         user_id = client.get_current_user_id()
         print(f"Authenticated as user: {user_id}")
+        
+        # Build cache immediately as requested
+        # Check if we should force refresh (e.g. if user added playlists manually outside the script)
+        force_refresh = getattr(config, 'RESET_PLAYLIST_CACHE', False)
+        client.refresh_playlist_cache(force=force_refresh)
+        
     except Exception as e:
         print(f"Authentication failed: {e}")
         return
 
     # 2. Fetch Liked Songs
-    liked_songs = client.fetch_current_user_saved_tracks()
+    # Determine max tracks based on config
+    max_tracks = config.MAX_TRACKS_TO_PROCESS
+    
+    # If Dry Run is enabled and no specific limit is set, default to 10 for safety
+    if config.DRY_RUN and max_tracks is None:
+        max_tracks = 10
+        
+    liked_songs = client.fetch_current_user_saved_tracks(max_tracks=max_tracks)
     if not liked_songs:
         print("No liked songs found.")
         return
@@ -34,13 +59,23 @@ def main():
     # Filter for incremental sync
     new_songs = []
     latest_timestamp = last_run or "1970-01-01T00:00:00Z"
+    processed_tracks = state.get_processed_tracks()
+    skipped_count = 0
     
     for song in liked_songs:
         if state.is_track_newer(song['added_at'], last_run):
+            # Persistence Check: Skip if already processed
+            if song['uri'] in processed_tracks:
+                skipped_count += 1
+                continue
+                
             new_songs.append(song)
             # Track the max timestamp we see
             if song['added_at'] > latest_timestamp:
                 latest_timestamp = song['added_at']
+    
+    if skipped_count > 0:
+        print(f"Skipped {skipped_count} songs already processed.")
     
     if not new_songs:
         print("No new songs found since last run.")
@@ -48,38 +83,55 @@ def main():
         
     print(f"Found {len(new_songs)} new songs to sort.")
 
-    # 3. Fetch Artist Genres
-    # Collect all artist IDs from the songs
-    all_artist_ids = set()
-    for song in new_songs:
-        for artist in song['artists']:
-            all_artist_ids.add(artist['id'])
-            
-    artist_genres_map = client.fetch_artist_genres_in_batches(list(all_artist_ids))
+    if config.DRY_RUN:
+       print(">>> DRY RUN: Processing limited to fetched songs (max 10) <<<")
 
-    # 3.5. Fallback for Missing Genres (2026 Update)
-    # Check which tracks have NO artist genres found
-    album_ids_to_fetch = set()
-    for song in new_songs:
-        has_genres = False
-        for artist in song['artists']:
-            if artist_genres_map.get(artist['id']):
-                has_genres = True
-                break
+    # 3. Fetch Genres (via Last.fm - Track Tags > Artist Tags)
+    print("Fetching tags from Last.fm (Track -> Artist fallback)...")
+    
+    # Store tags per song URI (most specific)
+    track_tags_map = {}
+    
+    try:
+        lastfm = LastFMClient()
+        total_songs = len(new_songs)
         
-        if not has_genres:
-            # This track has no artist genres, try album genres
-            if song.get('album') and song['album'].get('id'):
-                album_ids_to_fetch.add(song['album']['id'])
-                
-    album_genres_map = {}
-    if album_ids_to_fetch:
-        print(f"Found {len(album_ids_to_fetch)} albums to check for fallback genres...")
-        album_genres_map = client.fetch_album_genres_in_batches(list(album_ids_to_fetch))
+        for i, song in enumerate(new_songs):
+            song_name = song['name']
+            # Use primary artist for simplicity
+            primary_artist = song['artists'][0]['name'] if song['artists'] else "Unknown"
+            
+            # 1. Try Track Tags
+            tags = lastfm.fetch_track_tags(primary_artist, song_name)
+            source = "Track"
+            
+            # 2. Fallback to Artist Tags
+            if not tags:
+                # Check DB Cache first
+                cached_tags = state.get_artist_tags(primary_artist)
+                if cached_tags is not None:
+                     tags = cached_tags
+                     source = "Artist (DB Cache)"
+                else:
+                    # Fetch from API
+                    tags = lastfm.fetch_artist_tags(primary_artist)
+                    # Update DB Cache
+                    state.save_artist_tags(primary_artist, tags)
+                    source = "Artist (API)"
+            
+            track_tags_map[song['uri']] = tags
+            print(f"[{i+1}/{total_songs}] {song_name} ({primary_artist}) -> {source}: {tags[:3]}...", end='\r')
+            
+        print("\nLast.fm tagging complete.")
+
+    except Exception as e:
+        print(f"\nLast.fm Error: {e}")
+        track_tags_map = {}
 
     # 4. Sort Songs
     print("Sorting songs into buckets...")
-    sorted_playlists = categorize_tracks(new_songs, artist_genres_map, album_genres_map)
+    
+    sorted_playlists = categorise_tracks(new_songs, track_tags_map)
     
     # 5. Review & Sync
     total_sorted = 0
@@ -88,12 +140,15 @@ def main():
         total_sorted += count
         print(f"Bucket '{bucket}': {count} songs")
         
-    print(f"Total songs processed for sorting: {total_sorted}")
+    print(f"Total playlist placements: {total_sorted}")
+    print(f"Unique songs sorted: {len(new_songs)}")
     
     # Sync to Spotify
     print("\nSyncing to Spotify Playlists...")
     if config.DRY_RUN:
         print(">>> DRY RUN MODE ENABLED: No changes will be made to Spotify. <<<")
+    
+    all_processed_uris = set()
 
     for bucket, songs in sorted_playlists.items():
         if not songs:
@@ -101,54 +156,44 @@ def main():
             
         print(f"Syncing '{bucket}'... ({len(songs)} songs)")
         
-        if config.DRY_RUN:
-            print(f"   [DRY RUN] Would create/find playlist '{bucket}'")
-            print(f"   [DRY RUN] Would add {len(songs)} songs.")
-            continue
-
         # Get playlist ID (create if needed)
-        playlist_id = client.get_or_create_playlist(user_id, bucket)
+        playlist_id = client.get_or_create_playlist(bucket)
         
         # Get list of URIs
         track_uris = [s['uri'] for s in songs]
         
         # Update playlist (Safe Mode: Adds only missing tracks)
-        if config.DRY_RUN:
-             print(f"   [DRY RUN] Would call add_unique_tracks_to_playlist for {bucket}")
-        else:
-             client.add_unique_tracks_to_playlist(playlist_id, track_uris)
+        client.add_unique_tracks_to_playlist(playlist_id, track_uris)
         
+        # Keep track of what we've handled
+        for uri in track_uris:
+            all_processed_uris.add(uri)
+
+    # Specific handling for Unsorted playlist - we also consider these "processed" 
+    # because we DON'T want to keep re-fetching them forever.
+    unsorted_songs = sorted_playlists.get(config.UNSORTED_PLAYLIST_NAME, [])
+    for s in unsorted_songs:
+        all_processed_uris.add(s['uri'])
+    
     # Save State (Only if not Dry Run)
-    if not config.DRY_RUN and new_songs:
-        print(f"\nSaving new state (Timestamp: {latest_timestamp})")
-        state.save_state(latest_timestamp)
+    if not config.DRY_RUN:
+        if new_songs:
+            print(f"\nSaving new state (Timestamp: {latest_timestamp})")
+            state.save_state(latest_timestamp)
         
-    # 6. Logging Unclassified Songs (2026 Update)
+        if all_processed_uris:
+            print(f"Marking {len(all_processed_uris)} tracks as processed in DB...")
+            state.bulk_mark_tracks_as_processed(list(all_processed_uris))
+        
+    # 6. Logging Unclassified Songs
     unclassified_songs = sorted_playlists.get(config.UNSORTED_PLAYLIST_NAME, [])
     if unclassified_songs:
         print(f"Logging {len(unclassified_songs)} unclassified songs...")
-        log_unclassified_songs(unclassified_songs)
+        state.log_unclassified_songs(unclassified_songs)
 
     print("\nAll done! Enjoy your organized library.")
 
-def log_unclassified_songs(songs):
-    """
-    Appends details of unclassified songs to a persistent log file.
-    """
-    log_file = "logs/unclassified_songs.log"
-    import os
-    import datetime
-    
-    # Ensure logs dir exists
-    os.makedirs("logs", exist_ok=True)
-    
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    with open(log_file, "a", encoding="utf-8") as f:
-        for song in songs:
-            name = song.get('name', 'Unknown')
-            artist_names = ", ".join([a['name'] for a in song.get('artists', [])])
-            f.write(f"[{timestamp}] Song: \"{name}\" - Artist: \"{artist_names}\" (Details: No genres matched)\n")
+
 
 if __name__ == "__main__":
     main()

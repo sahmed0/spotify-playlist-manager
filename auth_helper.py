@@ -1,3 +1,6 @@
+"""
+Authentication helper for Spotify OAuth.
+"""
 import os
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
@@ -5,7 +8,8 @@ import config
 
 def generate_token():
     """
-    Runs a local web server to handle the OAuth flow and print the Refresh Token.
+    Run a local web server to handle the OAuth flow and print the Refresh Token.
+
     User needs to set CLIENT_ID and CLIENT_SECRET in .env or environment before running.
     """
     if not config.CLIENT_ID or not config.CLIENT_SECRET:
@@ -40,7 +44,7 @@ def generate_token():
         print(refresh_token)
         print("-" * 60)
         
-        # Optional: Save to .env for local testing
+        # Asks to save to .env for local testing
         save = input("\nDo you want to append this REFRESH_TOKEN to your local .env file? (y/n): ")
         if save.lower() == 'y':
             with open(".env", "a") as f:

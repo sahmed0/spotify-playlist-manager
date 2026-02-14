@@ -1,13 +1,17 @@
+"""
+Configuration settings for the Spotify Sorter application.
+"""
 import os
 from dotenv import load_dotenv
 
-# Load environment variables from .env file if it exists (for local dev)
+# Load environment variables from .env file if it exists (for local development)
 load_dotenv()
 
 CLIENT_ID = os.getenv("SPOTIPY_CLIENT_ID")
 CLIENT_SECRET = os.getenv("SPOTIPY_CLIENT_SECRET")
 REDIRECT_URI = os.getenv("SPOTIPY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
 REFRESH_TOKEN = os.getenv("SPOTIPY_REFRESH_TOKEN")
+LASTFM_API_KEY = os.getenv("LASTFM_API_KEY")
 
 # Scope required for the app
 SCOPE = "user-library-read playlist-modify-private playlist-modify-public playlist-read-private"
@@ -158,7 +162,7 @@ GENRE_MAPPING = {
     'Japanese Music': ['japanese', 'j-pop', 'j-rock', 'city pop', 'kayokyoku', 'visual kei', 'anime'],
     'Thai Music': ['thai', 'thai pop', 't-pop', 'luk thung', 'mor lam'],
     'Chinese Music': ['chinese', 'c-pop', 'mandopop', 'cantopop', 'chinese indie'],
-    'Urdu Pop': ['urdu pop', 'pakistani pop', 'lollywood'],
+    'Pakistani Music': ['pakistani', 'pakistani pop', 'urdu', 'lollywood', 'pakistani rock', 'urdu pop'],
     'International': ['world', 'worldbeat', 'ethno', 'folklore', 'celtic', 'global bass'],
 
     # -------------------------------------------------------------------------
@@ -192,5 +196,14 @@ GENRE_MAPPING = {
 # Songs that don't match any bucket go here
 UNSORTED_PLAYLIST_NAME = "Unsorted"
 
-# Safety: Set to True to print actions without making API calls to modify playlists.
+# Safety: Set to True to run main.py with read-only API calls (eg fetch tracks/playlists), without making 'write' API calls (eg add/remove tracks).
 DRY_RUN = True
+
+# Max number of tracks to process per run.
+# Set to an integer (e.g. 10, 50) to limit the live run (will make both read and write API calls).
+# Set to None to process all new tracks.
+MAX_TRACKS_TO_PROCESS = None
+
+# Set to True to force a re-fetch of playlists from Spotify, ignoring the local database cache.
+# Useful if you created a playlist manually and want the script to see it immediately.
+RESET_PLAYLIST_CACHE = False

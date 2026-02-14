@@ -1,31 +1,16 @@
+"""
+Logic for categorisation of tracks based on genre mapping.
+"""
 import config
 
-def get_track_genres(track_artists, artist_genres_map, track_album=None, album_genres_map=None):
+def categorise_tracks(tracks, track_tags_map):
     """
-    Combines all genres from a track's artists into a single set.
-    """
-    genres = set()
-    for artist_id in track_artists:
-        if artist_id in artist_genres_map:
-            genres.update(artist_genres_map[artist_id])
-    
-    # 2026 Fallback: If no artist genres found, try album genres
-    if not genres and track_album and album_genres_map:
-        album_id = track_album.get('id')
-        if album_id and album_id in album_genres_map:
-            genres.update(album_genres_map[album_id])
-            
-    return genres
+    Sort a list of tracks into buckets based on config.GENRE_MAPPING.
 
-def categorize_tracks(tracks, artist_genres_map, album_genres_map=None):
-    """
-    Sorts a list of tracks into buckets based on config.GENRE_MAPPING.
-    
     Args:
-        tracks: List of dicts, each must have 'name', 'id', 'artists' (list of IDs), 'album' (dict with id).
-        artist_genres_map: Dict mapping artist_id -> list of genre strings.
-        album_genres_map: Dict mapping album_id -> list of genre strings (optional).
-        
+        tracks: List of dicts, each must have 'name', 'id', 'uri', etc.
+        track_tags_map: Dict mapping track_uri -> list of genre strings [Last.fm].
+
     Returns:
         Dict: { 'Bucket Name': [track_object, ...], ... }
     """
@@ -33,17 +18,11 @@ def categorize_tracks(tracks, artist_genres_map, album_genres_map=None):
     sorted_playlists = {bucket: [] for bucket in config.GENRE_MAPPING.keys()}
     sorted_playlists[config.UNSORTED_PLAYLIST_NAME] = []
     
-    # Safety
-    if album_genres_map is None:
-        album_genres_map = {}
-
     for track in tracks:
-        track_name = track.get('name', 'Unknown')
-        artist_ids = [artist['id'] for artist in track.get('artists', [])]
-        track_album = track.get('album', {})
+        track_uri = track.get('uri')
         
-        # Get all genres for this track (from all its artists, maybe album)
-        current_genres = get_track_genres(artist_ids, artist_genres_map, track_album, album_genres_map)
+        # Get tags from map (already populated with Track > Artist fallback)
+        current_genres = track_tags_map.get(track_uri, [])
                 
         # Flatten into a single string for easy substring matching
         # e.g. "rock classic rock pop"
