@@ -1,9 +1,9 @@
-name: Daily Spotify Sorter
+name: Monthly Spotify Sorter
 
 on:
   schedule:
-    # Runs at 00:00 every day
-    - cron: '0 0 * * *'
+    # Runs at 00:00 on 28th of every month
+    - cron: '0 0 28 * *'
   workflow_dispatch:
 
 jobs:
@@ -23,11 +23,7 @@ jobs:
         pip install -r requirements.txt
 
     - name: Run Tests
-      # Captures output to logs/test_history.log but fails if tests fail
-      run: |
-        mkdir -p logs
-        echo "--- Run $(date) ---" >> logs/test_history.log
-        pytest test_sorter_logic.py | tee -a logs/test_history.log
+      run: python run_tests.py
 
     - name: Run Sorter
       env:
@@ -42,4 +38,4 @@ jobs:
       uses: stefanzweifel/git-auto-commit-action@v5
       with:
         commit_message: "Update sort state and logs [skip ci]"
-        file_pattern: "state.db logs/*.log"
+        file_pattern: "state.db"
