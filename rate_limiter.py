@@ -83,7 +83,7 @@ class RateLimitAdapter(HTTPAdapter):
                     retry_after = response.headers.get("Retry-After")
                     
                     if retry_after:
-                        wait_time = int(retry_after) + 1 # Add 1s buffer
+                        wait_time = int(retry_after) + 5 # Add 5s buffer
                         print(f"Rate Limit 429 Hit! Sleeping for {wait_time}s (per Spotify instruction)...")
                         time.sleep(wait_time)
                         continue # Retry the request
@@ -103,6 +103,12 @@ class PrintingRetry(Retry):
             retry_after = self.backoff_factor * (2 ** (len(self.history) + 1))
         
         print(f"   !!! Rate Limit / Error detected. Retrying in {retry_after:.2f} seconds... !!!")
+        
+        if retry_after > 60:
+            print(f"   [CRITICAL] Retry time {retry_after:.2f}s is too long! Exiting to prevent hang.")
+            import sys
+            sys.exit(1)
+            
         super().sleep(response)
 
 def create_resilient_session(retries=3, backoff_factor=1.0):

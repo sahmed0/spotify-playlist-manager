@@ -5,11 +5,11 @@ import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import config
 import rate_limiter
-import state
+import app_state as state
 
 # Initialise a global leaky bucket
-# CONSERVATIVE LIMIT: 15 requests per 30 seconds to balance speed and safety
-bucket = rate_limiter.LeakyBucket(max_requests=15, time_window_seconds=30)
+# VERY CAREFUL LIMIT: 5 requests per 30 seconds
+bucket = rate_limiter.LeakyBucket(max_requests=5, time_window_seconds=30)
 
 class SpotifyClient:
     """
@@ -145,7 +145,7 @@ class SpotifyClient:
             print(f"   [DRY RUN] Would create playlist '{name}'")
             return f"DRY_RUN_ID_{name}"
 
-        user_id = self.get_current_user_id()
+        user_id = self.get_current_user_id()  # Still fetch user ID for logging/verification if needed
         print(f"Creating new playlist: {name}")
         
         payload = {
@@ -156,12 +156,15 @@ class SpotifyClient:
         
         playlist_id = None
         try:
-             bucket.acquire() # Double check as we make a second call
-             playlist_id = self.sp._post(f"users/{user_id}/playlists", payload=payload)['id']
-        except Exception as e:
-             print(f"Creation failed ({e}), trying /me/playlists...")
              bucket.acquire()
+             # Use /me/playlists directly as it is more robust and less prone to 403s
              playlist_id = self.sp._post("me/playlists", payload=payload)['id']
+             
+        except Exception as e:
+             print(f"Creation failed for '{name}': {e}")
+             # Do not retry locally; let it fail or return None so we can skip this playlist
+             # If we retry blindly, we risk rate limits.
+             return None
              
         # Save to persistent cache
         if playlist_id:

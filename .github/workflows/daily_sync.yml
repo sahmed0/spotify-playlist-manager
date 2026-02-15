@@ -2,10 +2,10 @@ name: Daily Spotify Sorter
 
 on:
   schedule:
-    # INITIAL SYNC SCHEDULE: START AT 22:00 UTC TODAY (Feb 15)
-    # This avoids triggering runs while the 19-hour block is active.
-    - cron: '0,10,20,30,40,50 22,23 15 2 *' # Every 10m from 22:00 to 23:50 UTC today
-    - cron: '*/10 * 16 2 *'               # Every 10m all day tomorrow (Feb 16)
+    # INITIAL SYNC SCHEDULE:
+    # This avoids triggering runs while the API block is active.
+    - cron: '0,10,20,30,40,50 22,23 28 2 *' # Every 10m from 22:00 to 23:50 UTC on 28th Feb
+    # - cron: '*/10 * 16 2 *'               # Every 10m all day (Feb 16)
     # MAINTENANCE SCHEDULE (e.g., Daily):
     # - cron: '0 3 * * *'
   workflow_dispatch:

@@ -27,7 +27,7 @@ class LastFMClient:
             url = f"{self.base_url}?method=artist.gettoptags&artist={encoded_artist}&api_key={self.api_key}&format=json"
             
             response = requests.get(url, timeout=10)
-            time.sleep(0.25) # Rate limiting
+            time.sleep(0.1) # Rate limiting
             
             # Check for HTTP errors
             if response.status_code != 200:
@@ -70,7 +70,7 @@ class LastFMClient:
             url = f"{self.base_url}?method=track.gettoptags&artist={encoded_artist}&track={encoded_track}&api_key={self.api_key}&format=json"
             
             response = requests.get(url, timeout=10)
-            time.sleep(0.25) # Rate limiting
+            time.sleep(0.1) # Rate limiting
             
             if response.status_code != 200:
                 # 404/error is common for obscure tracks

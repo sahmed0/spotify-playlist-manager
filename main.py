@@ -2,7 +2,7 @@
 Main entry point for the Spotify Sorter application.
 """
 import config
-import state
+import app_state as state
 from spotify_client import SpotifyClient
 from sorter import categorise_tracks
 from lastfm_client import LastFMClient
