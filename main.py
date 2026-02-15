@@ -7,6 +7,7 @@ from spotify_client import SpotifyClient
 from sorter import categorise_tracks
 from lastfm_client import LastFMClient
 import time
+from datetime import datetime, timezone, timedelta
 
 
 def main():
@@ -50,12 +51,25 @@ def main():
     # If Dry Run is enabled and no specific limit is set, default to 10 for safety
     if config.DRY_RUN and max_tracks is None:
         max_tracks = 10
-        
-    liked_songs = client.fetch_current_user_saved_tracks(max_tracks=max_tracks)
-    if not liked_songs:
-        print("No liked songs found.")
-        return
 
+    # Incremental Sync Setup
+    start_offset = 0
+    if not last_run:
+        start_offset = state.get_sync_offset()
+        if start_offset > 0:
+            print(f"Resuming initial sync from offset {start_offset}...")
+        
+    liked_songs, new_offset, fully_synced = client.fetch_current_user_saved_tracks(
+        max_tracks=max_tracks, 
+        cutoff_date=last_run,
+        start_offset=start_offset
+    )
+    
+    if not liked_songs:
+        print("No (new) liked songs found in this batch.")
+        if fully_synced:
+             print("Library scan complete.")
+    
     # Filter for incremental sync
     new_songs = []
     latest_timestamp = last_run or "1970-01-01T00:00:00Z"
@@ -78,8 +92,8 @@ def main():
         print(f"Skipped {skipped_count} songs already processed.")
     
     if not new_songs:
-        print("No new songs found since last run.")
-        return
+        print("No (new) songs to sort in this batch.")
+        # Fall through to allow saving state if needed
         
     print(f"Found {len(new_songs)} new songs to sort.")
 
@@ -169,21 +183,32 @@ def main():
         for uri in track_uris:
             all_processed_uris.add(uri)
 
-    # Specific handling for Unsorted playlist - we also consider these "processed" 
-    # because we DON'T want to keep re-fetching them forever.
+    # Handling for Unsorted playlist - we also consider these "processed" 
     unsorted_songs = sorted_playlists.get(config.UNSORTED_PLAYLIST_NAME, [])
     for s in unsorted_songs:
         all_processed_uris.add(s['uri'])
     
     # Save State (Only if not Dry Run)
     if not config.DRY_RUN:
-        if new_songs:
-            print(f"\nSaving new state (Timestamp: {latest_timestamp})")
-            state.save_state(latest_timestamp)
-        
+        # 1. Update Processed Tracks (Always safe)
         if all_processed_uris:
             print(f"Marking {len(all_processed_uris)} tracks as processed in DB...")
             state.bulk_mark_tracks_as_processed(list(all_processed_uris))
+
+        # 2. Update Sync State
+        if fully_synced:
+             print("\nInitial library sync complete! You are now up to date.")
+             
+             # SAFETY: Set the last_run timestamp to 7 days ago instead of NOW.
+             # This ensures the next "Maintenance Run" scans the last week of history,
+             # catching any songs the user might have added while the initial sync was running.
+             safe_checkpoint = datetime.now(timezone.utc) - timedelta(days=7)
+             state.save_state(safe_checkpoint.isoformat())
+             state.clear_sync_offset() # Done with offset
+        elif new_offset > 0:
+             # If we advanced the offset
+             print(f"\nPartial sync complete. Saved progress at offset {new_offset}. Run again to continue.")
+             state.save_sync_offset(new_offset)
         
     # 6. Logging Unclassified Songs
     unclassified_songs = sorted_playlists.get(config.UNSORTED_PLAYLIST_NAME, [])

@@ -8,8 +8,8 @@ import rate_limiter
 import state
 
 # Initialise a global leaky bucket
-# STRICT LIMIT: 5 requests per 30 seconds to avoid 429 lockouts
-bucket = rate_limiter.LeakyBucket(max_requests=5, time_window_seconds=30)
+# CONSERVATIVE LIMIT: 15 requests per 30 seconds to balance speed and safety
+bucket = rate_limiter.LeakyBucket(max_requests=15, time_window_seconds=30)
 
 class SpotifyClient:
     """
@@ -51,18 +51,27 @@ class SpotifyClient:
             print(f"Warning: Failed to refresh token explicitly: {e}")
 
     @bucket
-    def fetch_current_user_saved_tracks(self, max_tracks=None):
+    def fetch_current_user_saved_tracks(self, max_tracks=None, cutoff_date=None, start_offset=0):
         """
         Fetch all liked songs from the user's library.
+        
+        Args:
+            max_tracks (int): Maximum number of tracks to fetch.
+            cutoff_date (str): ISO 8601 timestamp. If a track is older than this, stop fetching.
+            start_offset (int): Offset to start fetching from (for incremental sync).
         """
         results = []
         if max_tracks:
             limit = min(50, max_tracks)
         else:
-            limit = 50
-        offset = 0
+            limit = 50 # API limit for getting liked songs
+            
+        offset = start_offset
         
-        print("Fetching liked songs...")
+        print(f"Fetching liked songs starting from offset {offset}...")
+        stop_fetching = False
+        fully_synced = False
+        
         while True:
             try:
                 bucket.acquire()
@@ -70,9 +79,17 @@ class SpotifyClient:
                 items = response['items']
                 
                 if not items:
+                    fully_synced = True # Reached end of library
                     break
                 
                 for item in items:
+                    # Smart Fetching Check (Maintenance Mode)
+                    if cutoff_date and item['added_at'] <= cutoff_date:
+                        print(f"   -> Reached previously sync'd track ({item['added_at']}). Stopping fetch.")
+                        stop_fetching = True
+                        fully_synced = True # We are up to date
+                        break
+                        
                     track = item['track']
                     simple_track = {
                         'id': track['id'],
@@ -86,15 +103,20 @@ class SpotifyClient:
                         'artists': [{'id': a['id'], 'name': a['name']} for a in track['artists']]
                     }
                     results.append(simple_track)
+                    
+                    if max_tracks and len(results) >= max_tracks:
+                        stop_fetching = True
+                        break
                 
-                offset += limit
-                print(f"Fetched {len(results)} songs...", end='\r')
+                offset += len(items) # Advance offset by actual number of items fetched
                 
-                if max_tracks and len(results) >= max_tracks:
-                    results = results[:max_tracks]
+                if stop_fetching:
                     break
+                    
+                print(f"Fetched {len(results)} songs... (Total offset: {offset})", end='\r')
 
                 if response['next'] is None:
+                    fully_synced = True
                     break
                     
             except Exception as e:
@@ -102,7 +124,7 @@ class SpotifyClient:
                 break
                 
         print(f"\nTotal liked songs fetched: {len(results)}")
-        return results
+        return results, offset, fully_synced
 
     @bucket
     def get_current_user_id(self):
@@ -168,7 +190,7 @@ class SpotifyClient:
 
         # 2. Fetch from API if DB is empty or forced
         self.playlist_cache = {}
-        limit = 50
+        limit = 50 # API limit for getting playlists
         offset = 0
         
         while True:
@@ -230,7 +252,7 @@ class SpotifyClient:
             
         # If different, we must fetch
         existing_uris = set()
-        limit = 50
+        limit = 100 # API limit for getting playlist tracks
         offset = 0
         
         print(f"Snapshot changed or new. Fetching tracks for {playlist_id}...")
@@ -289,8 +311,8 @@ class SpotifyClient:
 
         print(f"   -> Adding {len(to_add)} new tracks...")
 
-        # Batch Processing (Up to 50 tracks per request)
-        batch_size = 50
+        # Batch Processing (Up to 100 tracks per request)
+        batch_size = 100 # API limit for adding tracks to playlist
         total_added = 0
         
         for i in range(0, len(to_add), batch_size):
@@ -306,4 +328,3 @@ class SpotifyClient:
                 
             except Exception as e:
                 print(f"\nError adding batch to {playlist_id}: {e}")
-

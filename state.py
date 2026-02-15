@@ -223,5 +223,23 @@ def cache_playlist(name, playlist_id):
         )
         conn.commit()
 
+def get_sync_offset():
+    """Return the current initial_sync_offset from the database (default 0)."""
+    with get_db_connection() as conn:
+        row = conn.execute("SELECT value FROM app_state WHERE key = ?", ('initial_sync_offset',)).fetchone()
+        return int(row['value']) if row else 0
 
+def save_sync_offset(offset):
+    """Save the current initial_sync_offset to the database."""
+    with get_db_connection() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO app_state (key, value) VALUES (?, ?)",
+            ('initial_sync_offset', str(offset))
+        )
+        conn.commit()
 
+def clear_sync_offset():
+    """Remove the initial_sync_offset from the database."""
+    with get_db_connection() as conn:
+        conn.execute("DELETE FROM app_state WHERE key = ?", ('initial_sync_offset',))
+        conn.commit()

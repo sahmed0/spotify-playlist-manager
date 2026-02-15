@@ -197,12 +197,12 @@ GENRE_MAPPING = {
 UNSORTED_PLAYLIST_NAME = "Unsorted"
 
 # Safety: Set to True to run main.py with read-only API calls (eg fetch tracks/playlists), without making 'write' API calls (eg add/remove tracks).
-DRY_RUN = True
+DRY_RUN = False
 
 # Max number of tracks to process per run.
-# Set to an integer (e.g. 10, 50) to limit the live run (will make both read and write API calls).
-# Set to None to process all new tracks.
-MAX_TRACKS_TO_PROCESS = None
+# Batch Size: Acts as the batch size for the initial sync (e.g., set to 100 to process 100 old songs at a time).
+# Set to None to process all new tracks (NOT recommended for initial sync).
+MAX_TRACKS_TO_PROCESS = 100
 
 # Set to True to force a re-fetch of playlists from Spotify, ignoring the local database cache.
 # Useful if you created a playlist manually and want the script to see it immediately.
