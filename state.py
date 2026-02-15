@@ -79,6 +79,16 @@ def init_db():
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+
+        # Table for test run logs
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS test_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                success BOOLEAN,
+                output TEXT
+            )
+        ''')
         
         conn.commit()
 
@@ -222,14 +232,13 @@ def cache_playlist(name, playlist_id):
         )
         conn.commit()
 
-def bulk_cache_playlists(playlists_dict):
-    """Save multiple playlists to the cache efficiently."""
-    if not playlists_dict:
-        return
-        
+
+
+def log_test_run(success, output):
+    """Log the result of a test run to the database."""
     with get_db_connection() as conn:
-        conn.executemany(
-            "INSERT OR REPLACE INTO playlist_cache (name, playlist_id) VALUES (?, ?)",
-            [(name, pid) for name, pid in playlists_dict.items()]
+        conn.execute(
+            "INSERT INTO test_runs (success, output) VALUES (?, ?)",
+            (success, output)
         )
         conn.commit()
