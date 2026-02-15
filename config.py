@@ -9,7 +9,7 @@ load_dotenv()
 
 CLIENT_ID = os.getenv("SPOTIPY_CLIENT_ID")
 CLIENT_SECRET = os.getenv("SPOTIPY_CLIENT_SECRET")
-REDIRECT_URI = os.getenv("SPOTIPY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
+REDIRECT_URI = os.getenv("SPOTIPY_REDIRECT_URI")
 REFRESH_TOKEN = os.getenv("SPOTIPY_REFRESH_TOKEN")
 LASTFM_API_KEY = os.getenv("LASTFM_API_KEY")
 
