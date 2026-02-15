@@ -85,11 +85,8 @@ To handle large libraries and strict API limits:
 ---
 
 ## 🧪 Verification
-The included test suite and dry-run mode provide comprehensive coverage:
+The dry-run mode provides testing ability without actually modifying your playlists:
 ```bash
-# Run logic tests
-pytest test_sorter_logic.py
-
 # Perform a safe dry run (config.DRY_RUN = True)
 python main.py
 ```
