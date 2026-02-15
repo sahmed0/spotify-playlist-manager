@@ -223,6 +223,23 @@ def cache_playlist(name, playlist_id):
         )
         conn.commit()
 
+def bulk_cache_playlists(playlist_map):
+    """
+    Save multiple playlists to the cache efficiently.
+    
+    Args:
+        playlist_map (dict): A dictionary of {playlist_name: playlist_id}.
+    """
+    if not playlist_map:
+        return
+        
+    with get_db_connection() as conn:
+        conn.executemany(
+            "INSERT OR REPLACE INTO playlist_cache (name, playlist_id) VALUES (?, ?)",
+            list(playlist_map.items())
+        )
+        conn.commit()
+
 def get_sync_offset():
     """Return the current initial_sync_offset from the database (default 0)."""
     with get_db_connection() as conn:
