@@ -80,15 +80,6 @@ def init_db():
             )
         ''')
 
-        # Table for test run logs
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS test_runs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                success BOOLEAN,
-                output TEXT
-            )
-        ''')
         
         conn.commit()
 
@@ -234,11 +225,3 @@ def cache_playlist(name, playlist_id):
 
 
 
-def log_test_run(success, output):
-    """Log the result of a test run to the database."""
-    with get_db_connection() as conn:
-        conn.execute(
-            "INSERT INTO test_runs (success, output) VALUES (?, ?)",
-            (success, output)
-        )
-        conn.commit()

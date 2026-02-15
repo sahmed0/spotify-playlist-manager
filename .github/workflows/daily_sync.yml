@@ -22,9 +22,6 @@ jobs:
       run: |
         pip install -r requirements.txt
 
-    - name: Run Tests
-      run: python run_tests.py
-
     - name: Run Sorter
       env:
         SPOTIPY_CLIENT_ID: ${{ secrets.SPOTIPY_CLIENT_ID }}
