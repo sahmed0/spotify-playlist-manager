@@ -2,8 +2,7 @@ name: Daily Spotify Sorter
 
 on:
   schedule:
-  schedule:
-    # 1. Initial Mega-Sync: Run tomorrow (Feb 16) at 10:00 PM UTC
+    # 1. Initial Mega-Sync: Run on Feb 16 at 10:00 PM UTC
     - cron: '0 22 16 2 *'
     # 2. Weekly Maintenance: Every Sunday at 3:00 AM UTC
     - cron: '0 3 * * 0'
