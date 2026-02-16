@@ -11,12 +11,33 @@ class SpotifyAPIError(Exception):
     """Custom exception for Spotify API errors."""
     pass
 
+def retry_on_token_failure(func):
+    """
+    Decorator to retry a function call once if a 401 Access Token Expired error occurs.
+    """
+    from functools import wraps
+    import spotipy
+
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        try:
+            return func(self, *args, **kwargs)
+        except spotipy.exceptions.SpotifyException as e:
+            if e.http_status == 401 and "access token expired" in str(e).lower():
+                print(f"   !!! Token expired during {func.__name__}. Force refreshing...")
+                self._force_refresh_token()
+                print(f"   !!! Retrying {func.__name__}...")
+                return func(self, *args, **kwargs)
+            else:
+                raise
+    return wrapper
+
 class SpotifyClient:
     """
     A wrapper around `spotipy.Spotify` that resiliently handles rate limits and session management.
     """
     def __init__(self, dry_run=False):
-        self.session = rate_limiter.create_resilient_session()
+        self.session = rate_limiter.create_resilient_session(bucket=rate_limiter.spotify_bucket)
         self.dry_run = dry_run
         self.playlist_cache = None # Cache for {name: id}
         
@@ -43,20 +64,25 @@ class SpotifyClient:
         """
         try:
             auth_manager = self.sp.auth_manager
+            print("Attempting to refresh access token...")
             new_token_info = auth_manager.refresh_access_token(config.REFRESH_TOKEN)
-            self.sp.auth_manager = auth_manager
-            self.sp = spotipy.Spotify(auth=new_token_info['access_token'], requests_session=self.session)
+            
+            # Note: We do NOT need to re-initialize self.sp. 
+            # The auth_manager object is shared and now has the new token info.
+            # spotipy will automatically use the new token for subsequent requests.
             
             print("Successfully refreshed access token.")
         except Exception as e:
             print(f"Warning: Failed to refresh token explicitly: {e}")
 
+    @retry_on_token_failure
     def get_current_user_id(self):
         """
         Fetch the current user's ID.
         """
         return self.sp.me()['id']
 
+    @retry_on_token_failure
     def fetch_current_user_saved_tracks(self, max_tracks=None, cutoff_date=None, start_offset=0):
         """
         Fetch all liked songs from the user's library.
@@ -134,6 +160,7 @@ class SpotifyClient:
 
 
 
+    @retry_on_token_failure
     def create_playlist_for_current_user(self, name):
         """
         Create a new playlist for the current user.
@@ -175,6 +202,7 @@ class SpotifyClient:
                 
         return playlist_id
 
+    @retry_on_token_failure
     def refresh_playlist_cache(self, force=False):
         """
         Fetch all user playlists and cache them.
@@ -215,6 +243,7 @@ class SpotifyClient:
         print(f"\n   Cache built. Found {len(self.playlist_cache)} playlists. Saving to DB...")
         state.bulk_cache_playlists(all_playlists)
 
+    @retry_on_token_failure
     def get_or_create_playlist(self, name):
         """
         Find a playlist by name for the user, or create it if missing.
@@ -236,6 +265,7 @@ class SpotifyClient:
              
         return new_id
 
+    @retry_on_token_failure
     def get_playlist_tracks(self, playlist_id):
         """
         Fetch all track URIs currently in the playlist.
@@ -286,6 +316,7 @@ class SpotifyClient:
         return existing_uris
 
 
+    @retry_on_token_failure
     def add_unique_tracks_to_playlist(self, playlist_id, track_uris, on_batch_success=None):
         """
         Add ONLY missing tracks to the playlist.

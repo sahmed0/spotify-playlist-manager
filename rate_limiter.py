@@ -22,6 +22,10 @@ class LeakyBucket:
         self.max_requests = max_requests
         self.time_window_seconds = time_window_seconds
         self.bucket_id = bucket_id
+        if max_requests > 0:
+            self.average_spacing = time_window_seconds / max_requests
+        else:
+            self.average_spacing = 0
         self.lock = threading.Lock()
         
         # Load state from DB
@@ -49,9 +53,35 @@ class LeakyBucket:
         cutoff = now - self.time_window_seconds
         self.request_timestamps = [t for t in self.request_timestamps if t > cutoff]
 
+    def _sleep_with_jitter(self, wait_time, log_threshold=0.0):
+        """Standardise jitter calculation, logging, and sleeping."""
+        if wait_time <= 0:
+            return
+            
+        # Add jitter (5-10% of wait time)
+        jitter = wait_time * random.uniform(0.05, 0.1)
+        total_wait = wait_time + jitter
+        
+        # Only log if the wait is significant enough
+        if total_wait > log_threshold:
+            print(f"Rate Limit ({self.bucket_id}): Pausing for {total_wait:.2f}s")
+        
+        time.sleep(total_wait)
+
     def acquire(self):
         """Block until a request token becomes available in the bucket."""
         with self.lock:
+            # 1. Enforce Spacing between API calls (Rather than bursts)
+            if self.request_timestamps and self.average_spacing > 0:
+                last_request_time = self.request_timestamps[-1]
+                target_time = last_request_time + self.average_spacing
+                now = time.time()
+                
+                if now < target_time:
+                    wait_time = target_time - now
+                    # Log only if wait > 1s for spacing (spam reduction)
+                    self._sleep_with_jitter(wait_time, log_threshold=1.0)
+
             self._clean_old_requests()
             
             while len(self.request_timestamps) >= self.max_requests:
@@ -61,10 +91,8 @@ class LeakyBucket:
                 wait_time = (oldest_timestamp + self.time_window_seconds) - now
                 
                 if wait_time > 0:
-                    jitter = random.uniform(2, 5)
-                    total_wait = wait_time + jitter
-                    print(f"Rate Limit ({self.bucket_id}): Pausing for {total_wait:.2f}s (incl. {jitter:.2f}s jitter)...")
-                    time.sleep(total_wait)
+                    # Always log capacity waits
+                    self._sleep_with_jitter(wait_time, log_threshold=0.0)
                 
                 # Re-clean after waking up
                 self._clean_old_requests()
@@ -142,11 +170,10 @@ class PrintingRetry(Retry):
             
         super().sleep(response)
 
-# Shared bucket instance (Global Rate Limiter for Spotify)
-# VERY CAREFUL LIMIT: 1 request per 30 seconds (Ironclad Safety)
-shared_bucket = LeakyBucket(max_requests=1, time_window_seconds=30.0, bucket_id="spotify_global")
+# Rate Limit for Spotify. CAREFUL LIMIT: 5 requests per 30 seconds
+spotify_bucket = LeakyBucket(max_requests=5, time_window_seconds=30.0, bucket_id="spotify_global")
 
-# Dedicated bucket for Last.fm (Safe but faster: 4 requests per second)
+# Rate Limit for Last.fm. 4 requests per second
 lastfm_bucket = LeakyBucket(max_requests=4, time_window_seconds=1.0, bucket_id="lastfm_global")
 
 class RateLimitedSession(requests.Session):
@@ -162,16 +189,14 @@ class RateLimitedSession(requests.Session):
             self.bucket.acquire()
         return super().request(method, url, *args, **kwargs)
 
-def create_resilient_session(retries=3, backoff_factor=1.0, bucket=None):
+def create_resilient_session(bucket, retries=3, backoff_factor=1.0):
     """
     Create a RateLimitedSession with the RateLimitAdapter mounted.
     
     Args:
-        bucket (LeakyBucket): The rate limiter bucket to use. Defaults to shared_bucket (Spotify) if None.
+        bucket (LeakyBucket): The rate limiter bucket to use. (Mandatory)
     """
-    if bucket is None:
-        bucket = shared_bucket
-        
+    # Create session with the specific bucket
     session = RateLimitedSession(bucket=bucket)
     
     # Use custom PrintingRetry for visibility

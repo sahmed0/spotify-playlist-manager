@@ -9,7 +9,6 @@ from lastfm_client import LastFMClient
 
 from datetime import datetime, timezone, timedelta
 
-
 def main():
     """
     
@@ -50,9 +49,9 @@ def main():
     # Determine max tracks based on config
     max_tracks = config.MAX_TRACKS_TO_PROCESS
     
-    # If Dry Run is enabled and no specific limit is set, default to 10 for safety
+    # If Dry Run is enabled and no specific limit is set, default to 100 for safety
     if config.DRY_RUN and max_tracks is None:
-        max_tracks = 10
+        max_tracks = 100
 
     # Incremental Sync Setup
     start_offset = 0
@@ -74,7 +73,7 @@ def main():
     
     # Filter for incremental sync
     new_songs = []
-    latest_timestamp = last_run or "1970-01-01T00:00:00Z"
+
     processed_tracks = state.get_processed_tracks()
     skipped_count = 0
     
@@ -86,9 +85,7 @@ def main():
                 continue
                 
             new_songs.append(song)
-            # Track the max timestamp we see
-            if song['added_at'] > latest_timestamp:
-                latest_timestamp = song['added_at']
+
     
     if skipped_count > 0:
         print(f"Skipped {skipped_count} songs already processed.")
@@ -103,46 +100,12 @@ def main():
        print(">>> DRY RUN: Processing limited to fetched songs (max 10) <<<")
 
     # 3. Fetch Genres (via Last.fm - Track Tags > Artist Tags)
-    print("Fetching tags from Last.fm (Track -> Artist fallback)...")
+    print("Fetching tags from Last.fm")
     
     # Store tags per song URI (most specific)
-    track_tags_map = {}
-    
-    try:
-        lastfm = LastFMClient()
-        total_songs = len(new_songs)
-        
-        for i, song in enumerate(new_songs):
-            song_name = song['name']
-            # Use primary artist for simplicity
-            primary_artist = song['artists'][0]['name'] if song['artists'] else "Unknown"
-            
-            # 1. Try Track Tags
-            tags = lastfm.fetch_track_tags(primary_artist, song_name)
-            source = "Track"
-            
-            # 2. Fallback to Artist Tags
-            if not tags:
-                # Check DB Cache first
-                cached_tags = state.get_artist_tags(primary_artist)
-                if cached_tags is not None:
-                     tags = cached_tags
-                     source = "Artist (DB Cache)"
-                else:
-                    # Fetch from API
-                    tags = lastfm.fetch_artist_tags(primary_artist)
-                    # Update DB Cache
-                    state.save_artist_tags(primary_artist, tags)
-                    source = "Artist (API)"
-            
-            track_tags_map[song['uri']] = tags
-            print(f"[{i+1}/{total_songs}] {song_name} ({primary_artist}) -> {source}: {tags[:3]}...", end='\r')
-            
-        print("\nLast.fm tagging complete.")
-
-    except Exception as e:
-        print(f"\nLast.fm Error: {e}")
-        track_tags_map = {}
+    from lastfm_client import enrich_tracks
+    track_tags_map = enrich_tracks(new_songs)
+    print("\nLast.fm tagging complete.")
 
     # 4. Sort Songs
     print("Sorting songs into buckets...")
@@ -185,11 +148,11 @@ def main():
         else:
              checkpoint_callback = None
 
-        # Update playlist (Safe Mode: Adds only missing tracks)
+        # Update playlist (Adds only missing tracks)
         # Pass callback for granular checkpointing
         client.add_unique_tracks_to_playlist(playlist_id, track_uris, on_batch_success=checkpoint_callback)
         
-        # Keep track of what we've handled
+        # Add processed tracks to database
         for uri in track_uris:
             all_processed_uris.add(uri)
 
@@ -205,8 +168,7 @@ def main():
     # Save State (Only if not Dry Run)
     if not config.DRY_RUN:
         # 1. Update Processed Tracks (For Unsorted & leftovers)
-        # We already saved sorted tracks incrementally, but this is a final sweep
-        # to catch 'Unsorted' or any edge cases.
+        # We already saved processed tracks incrementally, but this is a final sweep to catch 'Unsorted' or any edge cases.
         if all_processed_uris:
             state.bulk_mark_tracks_as_processed(list(all_processed_uris))
 

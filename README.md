@@ -37,7 +37,7 @@ graph TD
     -   Last run timestamp (for incremental sync).
     -   Processed track URIs (to prevent duplicates).
     -   Playlist snapshots (to detect external changes).
-    -   **Artist Tag Cache** (to minimise Last.fm usage).
+    -   Artist Tag Cache (to minimise Last.fm usage).
 
 ---
 
@@ -54,8 +54,9 @@ The application uses a dual-layer strategy to comply with Spotify and Last.fm AP
 
 -   **Proactive: Leaky Bucket Algorithm**: 
     -   Every request is governed by a `LeakyBucket` rate limiter in `rate_limiter.py`. 
-    -   **Spotify**: Set to an "Ironclad" safety limit (e.g., 1 request every 30 seconds with 1-5s jitter) for maximum stealth.
-    -   **Last.fm**: Uses a dedicated faster bucket (4 requests per second) to process genres quickly but safely.
+    -   **Spotify**: Set to a low safety limit (e.g., 5 requests per 30 seconds with 5-10% jitter) to avoid rate limits.
+    -   **Last.fm**: Uses a faster leaking bucket (4 requests per second) to process genres quickly but safely.
+    -   **Enforced Spacing**: The code enforces spacing between individual API calls rather than creating large bursts of calls followed by silence. This mimics human behaviour and avoids triggering rate limits.
 -   **Reactive: HTTP Adapter & Retries**: 
     -   A custom `RateLimitAdapter` is mounted to the `requests` session.
     -   If an API returns an **HTTP 429 (Too Many Requests)**, the adapter automatically extracts the `Retry-After` header, pauses execution, and retries once it is safe.
