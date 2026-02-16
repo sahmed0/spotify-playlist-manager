@@ -30,4 +30,4 @@ Thumbs.db
 # state.db is NOT ignored so it can sync to GitHub Actions
 state.db-shm
 state.db-wal
-
+test_*.db

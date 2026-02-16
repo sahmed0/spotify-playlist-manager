@@ -7,9 +7,9 @@ import config
 import rate_limiter
 import app_state as state
 
-# Initialise a global leaky bucket
-# VERY CAREFUL LIMIT: 5 requests per 30 seconds
-bucket = rate_limiter.LeakyBucket(max_requests=5, time_window_seconds=30)
+class SpotifyAPIError(Exception):
+    """Custom exception for Spotify API errors."""
+    pass
 
 class SpotifyClient:
     """
@@ -27,7 +27,8 @@ class SpotifyClient:
                 client_secret=config.CLIENT_SECRET,
                 redirect_uri=config.REDIRECT_URI,
                 scope=config.SCOPE,
-                open_browser=False
+                open_browser=False,
+                requests_session=self.session
             ),
             requests_session=self.session
         )
@@ -50,7 +51,12 @@ class SpotifyClient:
         except Exception as e:
             print(f"Warning: Failed to refresh token explicitly: {e}")
 
-    @bucket
+    def get_current_user_id(self):
+        """
+        Fetch the current user's ID.
+        """
+        return self.sp.me()['id']
+
     def fetch_current_user_saved_tracks(self, max_tracks=None, cutoff_date=None, start_offset=0):
         """
         Fetch all liked songs from the user's library.
@@ -74,7 +80,7 @@ class SpotifyClient:
         
         while True:
             try:
-                bucket.acquire()
+
                 response = self.sp._get(f"me/tracks?limit={limit}&offset={offset}")
                 items = response['items']
                 
@@ -126,10 +132,7 @@ class SpotifyClient:
         print(f"\nTotal liked songs fetched: {len(results)}")
         return results, offset, fully_synced
 
-    @bucket
-    def get_current_user_id(self):
-        """Return the current user's Spotify ID."""
-        return self.sp._get("me")['id']
+
 
     def create_playlist_for_current_user(self, name):
         """
@@ -145,26 +148,24 @@ class SpotifyClient:
             print(f"   [DRY RUN] Would create playlist '{name}'")
             return f"DRY_RUN_ID_{name}"
 
-        user_id = self.get_current_user_id()  # Still fetch user ID for logging/verification if needed
+        # No need to fetch user_id anymore.
         print(f"Creating new playlist: {name}")
         
+        # Simplified payload for /me/playlists
         payload = {
             "name": name,
-            "public": False,
             "description": f"Auto-generated {name} playlist"
         }
         
         playlist_id = None
         try:
-             bucket.acquire()
-             # Use /me/playlists directly as it is more robust and less prone to 403s
+
+             # Use /me/playlists directly context-aware endpoint
              playlist_id = self.sp._post("me/playlists", payload=payload)['id']
              
         except Exception as e:
-             print(f"Creation failed for '{name}': {e}")
-             # Do not retry locally; let it fail or return None so we can skip this playlist
-             # If we retry blindly, we risk rate limits.
-             return None
+             # Raise specific error immediately, no retry
+             raise SpotifyAPIError(f"Failed to create playlist '{name}': {e}") from e
              
         # Save to persistent cache
         if playlist_id:
@@ -176,7 +177,7 @@ class SpotifyClient:
 
     def refresh_playlist_cache(self, force=False):
         """
-        Fetches all user playlists and caches them.
+        Fetch all user playlists and cache them.
         
         Args:
             force (bool): If True, ignore DB cache and force fetch from API.
@@ -193,16 +194,18 @@ class SpotifyClient:
 
         # 2. Fetch from API if DB is empty or forced
         self.playlist_cache = {}
+        all_playlists = []
         limit = 50 # API limit for getting playlists
         offset = 0
         
         while True:
             print(f"   Fetching playlists from Spotify... (offset {offset})", end='\r')
-            bucket.acquire()
+
             response = self.sp._get(f"me/playlists?limit={limit}&offset={offset}")
             
             for pl in response['items']:
                 self.playlist_cache[pl['name']] = pl['id']
+                all_playlists.append(pl)
                 
             if not response['next']:
                 break
@@ -210,7 +213,7 @@ class SpotifyClient:
             
         # 3. Save to DB
         print(f"\n   Cache built. Found {len(self.playlist_cache)} playlists. Saving to DB...")
-        state.bulk_cache_playlists(self.playlist_cache)
+        state.bulk_cache_playlists(all_playlists)
 
     def get_or_create_playlist(self, name):
         """
@@ -243,7 +246,7 @@ class SpotifyClient:
              return set()
 
         # Check Snapshot ID
-        bucket.acquire()
+
         response = self.sp._get(f"playlists/{playlist_id}?fields=snapshot_id")
         current_snapshot = response['snapshot_id']
         
@@ -261,7 +264,7 @@ class SpotifyClient:
         print(f"Snapshot changed or new. Fetching tracks for {playlist_id}...")
         
         while True:
-            bucket.acquire()
+
             response = self.sp._get(f"playlists/{playlist_id}/items?fields=items(track(uri)),next&limit={limit}&offset={offset}")
             items = response['items']
             
@@ -282,16 +285,16 @@ class SpotifyClient:
             
         return existing_uris
 
-    @staticmethod
-    def identify_missing_tracks(new_tracks, existing_uris):
-        """Return a list of track URIs that are in new_tracks but not in existing_uris."""
-        if existing_uris is None:
-            pass
-        return [uri for uri in new_tracks if uri not in (existing_uris or set())]
 
-    def add_unique_tracks_to_playlist(self, playlist_id, track_uris):
+    def add_unique_tracks_to_playlist(self, playlist_id, track_uris, on_batch_success=None):
         """
         Add ONLY missing tracks to the playlist.
+        
+        Args:
+            playlist_id: Target playlist.
+            track_uris: List of track URIs to add.
+            on_batch_success (callable, optional): Function to call with list of added URIs 
+                                                   after each successful batch.
         """
         if not track_uris:
             return        
@@ -321,13 +324,20 @@ class SpotifyClient:
         for i in range(0, len(to_add), batch_size):
             batch = to_add[i : i + batch_size]
             try:
-                bucket.acquire()
+
                 payload = {"uris": batch}
                 # Explicitly use the 'items' endpoint
                 self.sp._post(f"playlists/{playlist_id}/items", payload=payload)
                 
                 total_added += len(batch)
                 print(f"   -> Added batch {i//batch_size + 1} ({len(batch)} songs)...")
+                
+                # GRIT: Call the checkpoint callback immediately
+                if on_batch_success:
+                    try:
+                        on_batch_success(batch)
+                    except Exception as e:
+                        print(f"   Warning: Checkpoint callback failed: {e}")
                 
             except Exception as e:
                 print(f"\nError adding batch to {playlist_id}: {e}")

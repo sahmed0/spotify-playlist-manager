@@ -2,7 +2,7 @@
 State management for the Spotify Sorter application using SQLite.
 """
 import sqlite3
-import time
+
 from datetime import datetime
 
 # Configuration
@@ -17,7 +17,7 @@ def get_db_connection():
     return conn
 
 def init_db():
-    """Initialise the database schema if it doesn't exist."""
+    """Initialise the database schema if it does not exist."""
     with get_db_connection() as conn:
         # Enable Write-Ahead Logging for concurrency
         conn.execute("PRAGMA journal_mode=WAL;")
@@ -81,6 +81,15 @@ def init_db():
         ''')
 
         
+        # Table for rate limit buckets
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS rate_limits (
+                bucket_id TEXT PRIMARY KEY,
+                timestamps TEXT,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
         conn.commit()
 
 # Initialise DB
@@ -223,21 +232,47 @@ def cache_playlist(name, playlist_id):
         )
         conn.commit()
 
-def bulk_cache_playlists(playlist_map):
+def bulk_cache_playlists(playlists):
     """
-    Save multiple playlists to the cache efficiently.
+    Save multiple playlists and their snapshots to the cache efficiently.
     
     Args:
-        playlist_map (dict): A dictionary of {playlist_name: playlist_id}.
+        playlists (list): A list of playlist dictionaries from the Spotify API.
+                          Each dict should have 'id', 'name', and 'snapshot_id'.
     """
-    if not playlist_map:
+    if not playlists:
         return
         
+    # Prepare data for bulk insertion
+    playlist_cache_data = [] # (name, id)
+    snapshot_data = []       # (id, snapshot_id)
+    
+    for pl in playlists:
+        # Safety check for required fields
+        if 'id' not in pl or 'name' not in pl:
+            print(f"Warning: Skipping malformed playlist in bulk cache: {pl.get('name', 'Unknown')}")
+            continue
+            
+        playlist_cache_data.append((pl['name'], pl['id']))
+        
+        if 'snapshot_id' in pl:
+            snapshot_data.append((pl['id'], pl['snapshot_id']))
+        
     with get_db_connection() as conn:
-        conn.executemany(
-            "INSERT OR REPLACE INTO playlist_cache (name, playlist_id) VALUES (?, ?)",
-            list(playlist_map.items())
-        )
+        # 1. Update Playlist Name Cache
+        if playlist_cache_data:
+            conn.executemany(
+                "INSERT OR REPLACE INTO playlist_cache (name, playlist_id) VALUES (?, ?)",
+                playlist_cache_data
+            )
+            
+        # 2. Update Snapshot Cache
+        if snapshot_data:
+            conn.executemany(
+                "INSERT OR REPLACE INTO snapshots (playlist_id, snapshot_id) VALUES (?, ?)",
+                snapshot_data
+            )
+            
         conn.commit()
 
 def get_sync_offset():
@@ -259,4 +294,35 @@ def clear_sync_offset():
     """Remove the initial_sync_offset from the database."""
     with get_db_connection() as conn:
         conn.execute("DELETE FROM app_state WHERE key = ?", ('initial_sync_offset',))
+        conn.commit()
+
+def get_rate_limit_data(bucket_id):
+    """
+    Retrieve stored timestamps for a rate limit bucket.
+    
+    Returns:
+        list[float]: A list of timestamps from the DB (or empty list).
+    """
+    with get_db_connection() as conn:
+        row = conn.execute("SELECT timestamps FROM rate_limits WHERE bucket_id = ?", (bucket_id,)).fetchone()
+        if row and row['timestamps']:
+            try:
+                # Timestamps stored as comma-separated string
+                return [float(t) for t in row['timestamps'].split(',')]
+            except ValueError:
+                return []
+        return []
+
+def save_rate_limit_data(bucket_id, timestamps):
+    """
+    Save list of timestamps for a rate limit bucket.
+    """
+    # Save timestamps as comma-separated string
+    ts_str = ",".join(f"{t:.4f}" for t in timestamps)
+    
+    with get_db_connection() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO rate_limits (bucket_id, timestamps) VALUES (?, ?)",
+            (bucket_id, ts_str)
+        )
         conn.commit()

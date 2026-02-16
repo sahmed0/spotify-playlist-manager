@@ -1,10 +1,9 @@
 """
 Last.fm API client for fetching artist and track tags (genres).
 """
-import requests
+import rate_limiter
 import config
 import urllib.parse
-import time
 
 class LastFMClient:
     def __init__(self):
@@ -12,6 +11,9 @@ class LastFMClient:
         if not self.api_key:
             raise ValueError("LASTFM_API_KEY not found in config. Please add it to your .env file.")
         self.base_url = "http://ws.audioscrobbler.com/2.0/"
+        
+        # Use dedicated rate limiter for Last.fm (4 req/sec) with retry logic
+        self.session = rate_limiter.create_resilient_session(bucket=rate_limiter.lastfm_bucket)
 
     def fetch_artist_tags(self, artist_name):
         """
@@ -26,8 +28,8 @@ class LastFMClient:
             
             url = f"{self.base_url}?method=artist.gettoptags&artist={encoded_artist}&api_key={self.api_key}&format=json"
             
-            response = requests.get(url, timeout=10)
-            time.sleep(0.1) # Rate limiting
+            # Use resilient session (Bucket handles rate limit, Adapter handles retries)
+            response = self.session.get(url, timeout=10)
             
             # Check for HTTP errors
             if response.status_code != 200:
@@ -69,8 +71,7 @@ class LastFMClient:
             
             url = f"{self.base_url}?method=track.gettoptags&artist={encoded_artist}&track={encoded_track}&api_key={self.api_key}&format=json"
             
-            response = requests.get(url, timeout=10)
-            time.sleep(0.1) # Rate limiting
+            response = self.session.get(url, timeout=10)
             
             if response.status_code != 200:
                 # 404/error is common for obscure tracks

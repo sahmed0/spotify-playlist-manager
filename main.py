@@ -6,16 +6,18 @@ import app_state as state
 from spotify_client import SpotifyClient
 from sorter import categorise_tracks
 from lastfm_client import LastFMClient
-import time
+
 from datetime import datetime, timezone, timedelta
 
 
 def main():
     """
+    
     Execute the main logic of the Spotify Sorter.
 
     Authenticates with Spotify, fetches liked songs, retrieves genre tags from Last.fm,
     sorts songs into playlists, and syncs changes to Spotify.
+    
     """
     print("Starting Spotify Sorter...")
     
@@ -176,12 +178,24 @@ def main():
         # Get list of URIs
         track_uris = [s['uri'] for s in songs]
         
+        if not config.DRY_RUN:
+             def checkpoint_callback(batch_uris):
+                 print(f"   -> Checkpoint: Saving {len(batch_uris)} tracks to DB...")
+                 state.bulk_mark_tracks_as_processed(batch_uris)
+        else:
+             checkpoint_callback = None
+
         # Update playlist (Safe Mode: Adds only missing tracks)
-        client.add_unique_tracks_to_playlist(playlist_id, track_uris)
+        # Pass callback for granular checkpointing
+        client.add_unique_tracks_to_playlist(playlist_id, track_uris, on_batch_success=checkpoint_callback)
         
         # Keep track of what we've handled
         for uri in track_uris:
             all_processed_uris.add(uri)
+
+        # ---------------------------------------------------------
+        # INCREMENTAL CHECKPOINT: Handled via callback inside add_unique_tracks_to_playlist
+        # ---------------------------------------------------------
 
     # Handling for Unsorted playlist - we also consider these "processed" 
     unsorted_songs = sorted_playlists.get(config.UNSORTED_PLAYLIST_NAME, [])
@@ -190,9 +204,10 @@ def main():
     
     # Save State (Only if not Dry Run)
     if not config.DRY_RUN:
-        # 1. Update Processed Tracks (Always safe)
+        # 1. Update Processed Tracks (For Unsorted & leftovers)
+        # We already saved sorted tracks incrementally, but this is a final sweep
+        # to catch 'Unsorted' or any edge cases.
         if all_processed_uris:
-            print(f"Marking {len(all_processed_uris)} tracks as processed in DB...")
             state.bulk_mark_tracks_as_processed(list(all_processed_uris))
 
         # 2. Update Sync State

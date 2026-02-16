@@ -49,11 +49,23 @@ Spotify has deprecated standard genre fields. We use **Last.fm** as a primary me
 ### 2. Multi-Genre Sorting
 Standard sorters often pick the "first match". Our system intelligently assigns a single track to **multiple playlists** if it matches multiple genres (e.g., a "Rock" song that fits "Workout" vibes will go to both), ensuring a comprehensive library organization.
 
-### 3. API Resilience & Batching
-To handle large libraries and strict API limits:
--   **Batch Processing**: Tracks are added in groups of 100 using the optimised `items` endpoint.
--   **Rate Limiting**: A "Leaky Bucket" algorithm ensures we never hit Spotify's 429 errors.
+### 3. Rate Limiting & API Compliance
+The application uses a dual-layer strategy to comply with Spotify and Last.fm API limits, ensuring long-running syncs (like an 8,000+ song initial migration) complete without being banned.
+
+-   **Proactive: Leaky Bucket Algorithm**: 
+    -   Every request is governed by a `LeakyBucket` rate limiter in `rate_limiter.py`. 
+    -   **Spotify**: Set to an "Ironclad" safety limit (e.g., 1 request every 30 seconds with 1-5s jitter) for maximum stealth.
+    -   **Last.fm**: Uses a dedicated faster bucket (4 requests per second) to process genres quickly but safely.
+-   **Reactive: HTTP Adapter & Retries**: 
+    -   A custom `RateLimitAdapter` is mounted to the `requests` session.
+    -   If an API returns an **HTTP 429 (Too Many Requests)**, the adapter automatically extracts the `Retry-After` header, pauses execution, and retries once it is safe.
+    -   Implements **Exponential Backoff** for standard network errors (500, 502, 503, 504).
+
+### 4. Batch Efficiency
+To handle large libraries:
+-   **Bulk Updates**: Tracks are added to playlists in groups of 100 per request.
 -   **State Tracking**: We track `snapshot_id`s to avoid re-scanning playlists that haven't changed.
+-   **Incremental Sync**: Processed tracks are logged in SQLite, allowing the script to resume exactly where it left off if interrupted.
 
 ---
 
