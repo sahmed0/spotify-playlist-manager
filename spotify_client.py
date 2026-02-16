@@ -327,7 +327,11 @@ class SpotifyClient:
 
                 payload = {"uris": batch}
                 # Explicitly use the 'items' endpoint
-                self.sp._post(f"playlists/{playlist_id}/items", payload=payload)
+                response = self.sp._post(f"playlists/{playlist_id}/items", payload=payload)
+                
+                # Update local snapshot ID to prevent unnecessary re-fetching on next run
+                if 'snapshot_id' in response:
+                    state.update_snapshot_id(playlist_id, response['snapshot_id'])
                 
                 total_added += len(batch)
                 print(f"   -> Added batch {i//batch_size + 1} ({len(batch)} songs)...")
