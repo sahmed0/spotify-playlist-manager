@@ -1,11 +1,12 @@
-name: Daily Spotify Sorter
+name: Spotify Sorter
 
 on:
   schedule:
     # 1. Initial Mega-Sync: Run on Feb 16 at 10:00 PM UTC
     - cron: '0 22 16 2 *'
-    # 2. Weekly Maintenance: Every Sunday at 3:00 AM UTC
+    # 2. Weekly Sync: Every Sunday at 3:00 AM UTC
     - cron: '0 3 * * 0'
+    # Eventually will sync daily but currently avoiding workflow run clashes for testing
   workflow_dispatch:
 
 jobs:
@@ -34,8 +35,8 @@ jobs:
         SPOTIPY_REDIRECT_URI: ${{ secrets.SPOTIPY_REDIRECT_URI }}
       run: python main.py
 
-    - name: Commit State & Logs
+    - name: Commit Database
       uses: stefanzweifel/git-auto-commit-action@v5
       with:
-        commit_message: "Update sort state and logs [skip ci]"
+        commit_message: "Update database"
         file_pattern: "state.db"
