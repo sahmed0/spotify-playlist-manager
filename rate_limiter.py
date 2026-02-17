@@ -59,7 +59,7 @@ class LeakyBucket:
             return
             
         # Add jitter (5-10% of wait time)
-        jitter = wait_time * random.uniform(0.05, 0.1)
+        jitter = wait_time * random.uniform(0.1, 0.2)
         total_wait = wait_time + jitter
         
         # Only log if the wait is significant enough
@@ -141,7 +141,7 @@ class RateLimitAdapter(HTTPAdapter):
                     retry_after = response.headers.get("Retry-After")
                     
                     if retry_after:
-                        wait_time = int(retry_after) + 30 # Add 30s buffer
+                        wait_time = int(retry_after) + 60 # Add 60s buffer
                         print(f"Rate Limit 429 Hit! Sleeping for {wait_time}s (per Spotify instruction)...")
                         time.sleep(wait_time)
                         continue # Retry the request
@@ -171,10 +171,10 @@ class PrintingRetry(Retry):
         super().sleep(response)
 
 # Rate Limit for Spotify. CAREFUL LIMIT: 5 requests per 30 seconds
-spotify_bucket = LeakyBucket(max_requests=5, time_window_seconds=30.0, bucket_id="spotify_global")
+spotify_bucket = LeakyBucket(max_requests=1, time_window_seconds=30.0, bucket_id="spotify_global")
 
 # Rate Limit for Last.fm. 4 requests per second
-lastfm_bucket = LeakyBucket(max_requests=4, time_window_seconds=1.0, bucket_id="lastfm_global")
+lastfm_bucket = LeakyBucket(max_requests=5, time_window_seconds=1.0, bucket_id="lastfm_global")
 
 class RateLimitedSession(requests.Session):
     """

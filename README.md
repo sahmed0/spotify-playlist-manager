@@ -54,8 +54,8 @@ The application uses a dual-layer strategy to comply with Spotify and Last.fm AP
 
 -   **Proactive: Leaky Bucket Algorithm**: 
     -   Every request is governed by a `LeakyBucket` rate limiter in `rate_limiter.py`. 
-    -   **Spotify**: Set to a low safety limit (e.g., 5 requests per 30 seconds with 5-10% jitter) to avoid rate limits.
-    -   **Last.fm**: Uses a faster leaking bucket (4 requests per second) to process genres quickly but safely.
+    -   **Spotify**: Set to a very low safety limit (e.g., 1 request per 30 seconds with 10 - 20% jitter) to avoid rate limits.
+    -   **Last.fm**: Uses a faster leaking bucket (5 requests per second) to process genres quickly but safely.
     -   **Enforced Spacing**: The code enforces spacing between individual API calls rather than creating large bursts of calls followed by silence. This mimics human behaviour and avoids triggering rate limits.
 -   **Reactive: HTTP Adapter & Retries**: 
     -   A custom `RateLimitAdapter` is mounted to the `requests` session.
