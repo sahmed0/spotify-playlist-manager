@@ -232,6 +232,13 @@ def cache_playlist(name, playlist_id):
         )
         conn.commit()
 
+def delete_playlist_cache(playlist_id):
+    """Remove a playlist from the cache (used when 404 Not Found occurs)."""
+    with get_db_connection() as conn:
+        conn.execute("DELETE FROM playlist_cache WHERE playlist_id = ?", (playlist_id,))
+        conn.execute("DELETE FROM snapshots WHERE playlist_id = ?", (playlist_id,))
+        conn.commit()
+
 def bulk_cache_playlists(playlists):
     """
     Save multiple playlists and their snapshots to the cache efficiently.

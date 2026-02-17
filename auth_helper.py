@@ -32,7 +32,7 @@ def generate_token():
     """)
 
     # This will open the browser, ask the user to login, and then return the access token info
-    # It automatically handles the local server part if redirect_uri is localhost
+    # It automatically handles the local server part if redirect_uri is a loopback address (localhost or 127.0.0.1)
     token_info = sp_oauth.get_access_token(as_dict=True)
     
     if token_info:

@@ -2,10 +2,13 @@
 Spotify API client wrapper with rate limiting and state management.
 """
 import spotipy
+import base64
 from spotipy.oauth2 import SpotifyOAuth
 import config
 import rate_limiter
 import app_state as state
+
+import time
 
 class SpotifyAPIError(Exception):
     """Custom exception for Spotify API errors."""
@@ -23,8 +26,9 @@ def retry_on_token_failure(func):
         try:
             return func(self, *args, **kwargs)
         except spotipy.exceptions.SpotifyException as e:
-            if e.http_status == 401 and "access token expired" in str(e).lower():
-                print(f"   !!! Token expired during {func.__name__}. Force refreshing...")
+            # Catch ANY 401 error (Unauthorized), not just "token expired"
+            if e.http_status == 401:
+                print(f"   !!! 401 Unauthorized during {func.__name__}. Force refreshing token...")
                 self._force_refresh_token()
                 print(f"   !!! Retrying {func.__name__}...")
                 return func(self, *args, **kwargs)
@@ -39,6 +43,7 @@ class SpotifyClient:
     def __init__(self, dry_run=False):
         self.session = rate_limiter.create_resilient_session(bucket=rate_limiter.spotify_bucket)
         self.dry_run = dry_run
+        self.user_id = None
         self.playlist_cache = None # Cache for {name: id}
         
         # 2. Initialise Spotipy with custom session
@@ -63,24 +68,72 @@ class SpotifyClient:
         Manually refresh the access token using the REFRESH_TOKEN.
         """
         try:
-            auth_manager = self.sp.auth_manager
-            print("Attempting to refresh access token...")
-            new_token_info = auth_manager.refresh_access_token(config.REFRESH_TOKEN)
+            print("Attempting to refresh access token (Explicit Flow)...")
+            if not config.REFRESH_TOKEN:
+                print("   !!! Error: No REFRESH_TOKEN found in config/env. Cannot refresh.")
+                return
+
+            # Explicitly construct the request to comply with Spotify requirements:
+            # POST https://accounts.spotify.com/api/token
+            # Headers: Content-Type: application/x-www-form-urlencoded
+            # Headers: Authorization: Basic <base64 encoded client_id:client_secret>
+            # Body: grant_type=refresh_token, refresh_token=...
+
+            auth_str = f"{config.CLIENT_ID}:{config.CLIENT_SECRET}"
+            auth_b64 = base64.b64encode(auth_str.encode()).decode()
+
+            headers = {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Authorization": f"Basic {auth_b64}"
+            }
             
-            # Note: We do NOT need to re-initialize self.sp. 
-            # The auth_manager object is shared and now has the new token info.
-            # spotipy will automatically use the new token for subsequent requests.
+            payload = {
+                "grant_type": "refresh_token",
+                "refresh_token": config.REFRESH_TOKEN
+            }
+
+            # Use the existing session (which has rate limiting, though usually not needed for auth)
+            # We use a direct request here, bypassing spotipy's internal logic for this step.
+            response = self.session.post("https://accounts.spotify.com/api/token", data=payload, headers=headers)
+
+            if response.status_code == 200:
+                token_info = response.json()
+                
+                # Spotify rules: "When a refresh token is not returned, continue using the existing token."
+                if 'refresh_token' not in token_info:
+                    token_info['refresh_token'] = config.REFRESH_TOKEN
+                
+                # Calculate expires_at for Spotipy
+                if 'expires_in' in token_info:
+                    token_info['expires_at'] = int(time.time()) + token_info['expires_in']
+
+                # Update Spotipy's internal auth manager with the new token
+                self.sp.auth_manager.cache_handler.save_token_to_cache(token_info)
+                
+                expires_in = token_info.get('expires_in')
+                print(f"   -> Successfully refreshed access token. Expires in: {expires_in}s")
+                
+                # Handle Refresh Token Rotation if a NEW one was returned
+                if token_info['refresh_token'] != config.REFRESH_TOKEN:
+                    print("   !!! WARNING: A new refresh token was issued!")
+                    print("   !!! You must update your .env / GitHub Secrets with the new token:")
+                    print(f"   {token_info['refresh_token']}")
+            else:
+                print(f"   !!! Error refreshing token: {response.status_code} {response.text}")
             
-            print("Successfully refreshed access token.")
         except Exception as e:
-            print(f"Warning: Failed to refresh token explicitly: {e}")
+            print(f"   !!! Error refreshing token explicitly: {e}")
 
     @retry_on_token_failure
     def get_current_user_id(self):
         """
         Fetch the current user's ID.
         """
-        return self.sp.me()['id']
+        if self.user_id:
+            return self.user_id
+            
+        self.user_id = self.sp.me()['id']
+        return self.user_id
 
     @retry_on_token_failure
     def fetch_current_user_saved_tracks(self, max_tracks=None, cutoff_date=None, start_offset=0):
@@ -225,6 +278,9 @@ class SpotifyClient:
         all_playlists = []
         limit = 50 # API limit for getting playlists
         offset = 0
+
+        # Get current user ID to filter owned/collaborative playlists
+        user_id = self.get_current_user_id()
         
         while True:
             print(f"   Fetching playlists from Spotify... (offset {offset})", end='\r')
@@ -232,8 +288,10 @@ class SpotifyClient:
             response = self.sp._get(f"me/playlists?limit={limit}&offset={offset}")
             
             for pl in response['items']:
-                self.playlist_cache[pl['name']] = pl['id']
-                all_playlists.append(pl)
+                # Only cache if explicitly owned by user (no collaborative)
+                if pl['owner']['id'] == user_id:
+                    self.playlist_cache[pl['name']] = pl['id']
+                    all_playlists.append(pl)
                 
             if not response['next']:
                 break
@@ -276,44 +334,58 @@ class SpotifyClient:
              return set()
 
         # Check Snapshot ID
-
-        response = self.sp._get(f"playlists/{playlist_id}?fields=snapshot_id")
-        current_snapshot = response['snapshot_id']
-        
-        stored_snapshot = state.get_stored_snapshot_id(playlist_id)
+        try:
+            response = self.sp._get(f"playlists/{playlist_id}?fields=snapshot_id")
+            current_snapshot = response['snapshot_id']
+            
+            stored_snapshot = state.get_stored_snapshot_id(playlist_id)
+                    
+            if current_snapshot == stored_snapshot:
+                print(f"Snapshot match for {playlist_id} ({current_snapshot[:8]}...). Skipping fetch.")
+                return None # Signal that we don't need to fetch
                 
-        if current_snapshot == stored_snapshot:
-            print(f"Snapshot match for {playlist_id} ({current_snapshot[:8]}...). Skipping fetch.")
-            return None # Signal that we don't need to fetch
+            # If different, we must fetch
+            existing_uris = set()
+            limit = 100 # API limit for getting playlist tracks
+            offset = 0
             
-        # If different, we must fetch
-        existing_uris = set()
-        limit = 100 # API limit for getting playlist tracks
-        offset = 0
-        
-        print(f"Snapshot changed or new. Fetching tracks for {playlist_id}...")
-        
-        while True:
+            print(f"Snapshot changed or new. Fetching tracks for {playlist_id}...")
+            
+            while True:
 
-            response = self.sp._get(f"playlists/{playlist_id}/items?fields=items(track(uri)),next&limit={limit}&offset={offset}")
-            items = response['items']
-            
-            for item in items:
-                if item and item.get('track'):
-                    existing_uris.add(item['track']['uri'])
-            
-            # Show progress
-            if offset > 0:
-                 print(f"   Fetching playlist tracks... ({len(existing_uris)} found)", end='\r')
+                response = self.sp._get(f"playlists/{playlist_id}/items?fields=items(track(uri)),next&limit={limit}&offset={offset}")
+                items = response['items']
+                
+                for item in items:
+                    if item and item.get('track'):
+                        existing_uris.add(item['track']['uri'])
+                
+                # Show progress
+                if offset > 0:
+                     print(f"   Fetching playlist tracks... ({len(existing_uris)} found)", end='\r')
 
-            if not response['next']:
-                break
-            offset += limit
-            
-        if not self.dry_run:
-            state.update_snapshot_id(playlist_id, current_snapshot)
-            
-        return existing_uris
+                if not response['next']:
+                    break
+                offset += limit
+                
+            if not self.dry_run:
+                state.update_snapshot_id(playlist_id, current_snapshot)
+                
+            return existing_uris
+
+        except spotipy.exceptions.SpotifyException as e:
+            if e.http_status == 404:
+                print(f"   !!! Playlist {playlist_id} not found (404). Invalidating cache...")
+                state.delete_playlist_cache(playlist_id)
+                # Remove from memory cache too if present
+                if self.playlist_cache:
+                    # Find key by value
+                    keys_to_remove = [k for k, v in self.playlist_cache.items() if v == playlist_id]
+                    for k in keys_to_remove:
+                        del self.playlist_cache[k]
+                return set() # Return empty set so we act like it's a new empty playlist
+            else:
+                raise
 
 
     @retry_on_token_failure
@@ -346,14 +418,26 @@ class SpotifyClient:
             # We don't save state in dry run
             return
 
-        print(f"   -> Adding {len(to_add)} new tracks...")
+        # Validate URIs before processing
+        valid_uris = []
+        for uri in to_add:
+            if isinstance(uri, str) and uri.startswith("spotify:track:"):
+                valid_uris.append(uri)
+            else:
+                print(f"   Warning: Skipping invalid/local URI: {uri}")
+        
+        if not valid_uris:
+            print("   -> No valid tracks to add after filtering.")
+            return
+
+        print(f"   -> Adding {len(valid_uris)} new tracks...")
 
         # Batch Processing (Up to 100 tracks per request)
         batch_size = 100 # API limit for adding tracks to playlist
         total_added = 0
         
-        for i in range(0, len(to_add), batch_size):
-            batch = to_add[i : i + batch_size]
+        for i in range(0, len(valid_uris), batch_size):
+            batch = valid_uris[i : i + batch_size]
             try:
 
                 payload = {"uris": batch}
@@ -374,5 +458,20 @@ class SpotifyClient:
                     except Exception as e:
                         print(f"   Warning: Checkpoint callback failed: {e}")
                 
+            except spotipy.exceptions.SpotifyException as e:
+                if e.http_status == 400:
+                    print(f"\n   !!! 400 Bad Request adding batch. Likely invalid URI in batch.")
+                    print(f"   !!! Batch start: {batch[0]}")
+                elif e.http_status == 404:
+                    print(f"\n   !!! 404 Not Found adding batch to {playlist_id}. Playlist likely deleted.")
+                    print("   !!! Invalidating cache and retrying setup...")
+                    
+                    state.delete_playlist_cache(playlist_id)
+                    # Clear memory cache to force re-fetch/create
+                    self.playlist_cache = None 
+                    
+                    print("   !!! state cleaned. Please run script again to recreate playlist.")
+                    break
+                print(f"   Error adding batch to {playlist_id}: {e}")
             except Exception as e:
                 print(f"\nError adding batch to {playlist_id}: {e}")

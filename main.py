@@ -38,6 +38,7 @@ def main():
         
         # Build cache immediately as requested
         # Check if we should force refresh (e.g. if user added playlists manually outside the script)
+        # Note: Set RESET_PLAYLIST_CACHE = False in config.py to save API calls
         force_refresh = getattr(config, 'RESET_PLAYLIST_CACHE', False)
         client.refresh_playlist_cache(force=force_refresh)
         

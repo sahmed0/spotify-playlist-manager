@@ -2,9 +2,7 @@ name: Spotify Sorter
 
 on:
   schedule:
-    # 1. Initial Mega-Sync: Run on Feb 17 at 9:30 PM UTC
-    - cron: '30 21 17 2 *'
-    # 2. Weekly Sync: Every Sunday at 3:00 AM UTC
+    # Weekly Sync: Every Sunday at 3:00 AM UTC
     - cron: '0 3 * * 0'
     # Eventually will sync daily but currently avoiding workflow run clashes for testing
   workflow_dispatch:

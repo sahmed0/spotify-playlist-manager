@@ -20,7 +20,7 @@ SCOPE = "user-library-read playlist-modify-private playlist-modify-public playli
 # STOP_AFTER_FIRST_MATCH:
 # True: Song goes into FIRST matching bucket only (Priority based on GENRE_MAPPING order).
 # False: Song goes into ALL matching buckets (e.g. Rock AND Workout).
-STOP_AFTER_FIRST_MATCH = False
+STOP_AFTER_FIRST_MATCH = True
 
 GENRE_MAPPING = {
     # -------------------------------------------------------------------------
@@ -205,4 +205,4 @@ MAX_TRACKS_TO_PROCESS = 500
 
 # Set to True to force a re-fetch of playlists from Spotify, ignoring the local database cache.
 # Useful if you created a playlist manually and want the script to see it immediately.
-RESET_PLAYLIST_CACHE = False
+RESET_PLAYLIST_CACHE = True
