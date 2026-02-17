@@ -36,6 +36,7 @@ jobs:
       run: python main.py
 
     - name: Commit Database
+      if: always()
       uses: stefanzweifel/git-auto-commit-action@v5
       with:
         commit_message: "Update database"
