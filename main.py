@@ -1,5 +1,5 @@
 """
-Main entry point for the Spotify Sorter application.
+Main entry point for the Spotify Liked Songs Organiser application.
 """
 import config
 import app_state as state
@@ -12,13 +12,13 @@ from datetime import datetime, timezone, timedelta
 def main():
     """
     
-    Execute the main logic of the Spotify Sorter.
+    Execute the main logic of the Spotify Liked Songs Organiser.
 
     Authenticates with Spotify, fetches liked songs, retrieves genre tags from Last.fm,
     sorts songs into playlists, and syncs changes to Spotify.
     
     """
-    print("Starting Spotify Sorter...")
+    print("Starting Spotify Liked Songs Organiser...")
     
     # Check for Dry Run
     if config.DRY_RUN:

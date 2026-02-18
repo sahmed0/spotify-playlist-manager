@@ -1,10 +1,10 @@
-name: Spotify Sorter
+name: Liked Songs Organiser
 
 on:
   schedule:
-    # Weekly Sync: Every Sunday at 3:00 AM UTC
-    - cron: '0 3 * * 0'
-    # Eventually will sync daily but currently avoiding workflow run clashes for testing
+    # Stand in schedule while testing (6pm 1st January)
+    - cron: '0 18 1 1 *'
+    # Eventually will sync daily but currently testing
   workflow_dispatch:
 
 jobs:
@@ -24,7 +24,7 @@ jobs:
       run: |
         pip install -r requirements.txt
 
-    - name: Run Sorter
+    - name: Run Liked Songs Organiser
       env:
         SPOTIPY_CLIENT_ID: ${{ secrets.SPOTIPY_CLIENT_ID }}
         SPOTIPY_CLIENT_SECRET: ${{ secrets.SPOTIPY_CLIENT_SECRET }}

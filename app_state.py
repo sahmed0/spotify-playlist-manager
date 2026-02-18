@@ -1,5 +1,5 @@
 """
-State management for the Spotify Sorter application using SQLite.
+State management for the Spotify Liked Songs Organiser application using SQLite.
 """
 import sqlite3
 

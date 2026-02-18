@@ -1,5 +1,5 @@
 """
-Configuration settings for the Spotify Sorter application.
+Configuration settings for the Spotify Liked Songs Organiser application.
 """
 import os
 from dotenv import load_dotenv
@@ -205,4 +205,4 @@ MAX_TRACKS_TO_PROCESS = 500
 
 # Set to True to force a re-fetch of playlists from Spotify, ignoring the local database cache.
 # Useful if you created a playlist manually and want the script to see it immediately.
-RESET_PLAYLIST_CACHE = True
+RESET_PLAYLIST_CACHE = False
