@@ -34,10 +34,8 @@ GENRE_MAPPING = {
         'house', 'deep house', 'tech house', 'progressive house', 'acid house',
         'tropical house', 'chicago house', 'future house', 'bass house', 'french house'
     ],
-    'Trance': ['trance', 'psytrance', 'uplifting trance', 'goa trance', 'vocal trance', 'progressive trance'],
-    'Dubstep': ['dubstep', 'brostep', 'riddim', 'deathstep', 'melodic dubstep'],
     'Drum and Bass': ['drum and bass', 'dnb', 'liquid funk', 'neurofunk', 'jump up'],
-    'Jungle': ['jungle', 'ragga jungle', 'darkside', 'intelligent dance music'],
+    'Jungle': ['jungle', 'ragga jungle', 'darkside'],
     'Garage': ['garage', 'uk garage', 'speed garage', '2-step', 'future garage', 'bassline'],
     'Synthpop': ['synthpop', 'synth-pop', 'electropop', 'futurepop', 'dark wave'],
     'Hyperpop': ['hyperpop', 'glitchcore', 'digicore', 'pc music', 'bubblegum bass'],
@@ -86,10 +84,8 @@ GENRE_MAPPING = {
 
     # --- Specific Regional / Cultural Styles ---
     'Afrobeats': ['afrobeats', 'afropop', 'afro fusion', 'alte', 'naija'],
-    'Afropiano': ['amapiano', 'afropiano', 'log drum', 'kwaito'],
     'K-pop': ['k-pop', 'korean pop', 'k-rock', 'k-hip hop', 'korean r&b'],
     'Bollywood': ['bollywood', 'filmi', 'hindi film', 'indian pop'],
-    'Bhangra': ['bhangra', 'modern bhangra', 'dhol'],
     'Punjabi Pop': ['punjabi pop', 'bhangra pop'],
     'Punjabi': ['punjabi', 'punjabi hip hop', 'punjabi folk'],
     'Sufi': ['sufi', 'sufi rock', 'qawwali fusion'],
@@ -163,34 +159,6 @@ GENRE_MAPPING = {
     'Thai Music': ['thai', 'thai pop', 't-pop', 'luk thung', 'mor lam'],
     'Chinese Music': ['chinese', 'c-pop', 'mandopop', 'cantopop', 'chinese indie'],
     'Pakistani Music': ['pakistani', 'pakistani pop', 'urdu', 'lollywood', 'pakistani rock', 'urdu pop'],
-    'International': ['world', 'worldbeat', 'ethno', 'folklore', 'celtic', 'global bass'],
-
-    # -------------------------------------------------------------------------
-    # 3. VIBES & ACTIVITIES
-    # (Matches based on function or mood rather than musical genre)
-    # -------------------------------------------------------------------------
-
-    'Workout': [
-        'workout', 'gym', 'techno', 'house', 'upbeat', 'high tempo', 'drum and bass',
-        'dnb', 'phonk', 'hardstyle', 'pump', 'cardio', 'running', 'fitness',
-        'hardcore', 'jumpstyle', 'crossfit', 'tabata', 'power metal'
-    ],
-    'Driving': [
-        'driving', 'road trip', 'classic rock', 'synthwave', 'yacht rock',
-        'highway', 'night drive', 'outrun', 'retrowave', 'vaporwave', 'soft rock',
-        'cruising', 'radio'
-    ],
-    'Chill': [
-        'chill', 'lo-fi', 'downtempo', 'ambient', 'chillhop', 'acoustic',
-        'study', 'relax', 'lounge', 'trip hop', 'meditation', 'easy listening',
-        'coffee shop', 'sleep', 'rain', 'yoga', 'balearic', 'chillout'
-    ],
-    'Easy Listening': [
-        'easy listening', 'adult contemporary', 'soft rock', 'lounge', 'exotica',
-        'muzak', 'elevator music', 'light music', 'orchestral pop', 'space age pop'
-    ],
-    'New Age': ['new age', 'healing', 'meditative', 'nature sounds', 'gregorian chant'],
-    'Instrumental': ['instrumental', 'soundtrack', 'score', 'cinematic', 'video game music', 'post-rock'],
 }
 
 # Songs that don't match any bucket go here

@@ -26,11 +26,19 @@ def main():
 
     # 1. Load State
     last_run = state.load_state()
+    start_offset = 0
+
     if last_run:
         print(f"Last sync detected: {last_run}")
         print("Checking for new songs only...")
     else:
-        print("No previous state found. Running full sync.")
+        # Check for partial sync state
+        start_offset = state.get_sync_offset()
+        if start_offset > 0:
+            print(f"Resuming initial sync from offset {start_offset}...")
+        else:
+            print("No previous state found. Running full sync.")
+
     try:
         client = SpotifyClient(dry_run=config.DRY_RUN)
         user_id = client.get_current_user_id()
@@ -54,12 +62,7 @@ def main():
     if config.DRY_RUN and max_tracks is None:
         max_tracks = 100
 
-    # Incremental Sync Setup
-    start_offset = 0
-    if not last_run:
-        start_offset = state.get_sync_offset()
-        if start_offset > 0:
-            print(f"Resuming initial sync from offset {start_offset}...")
+    # Incremental Sync Setup (start_offset already initialized above)
         
     liked_songs, new_offset, fully_synced = client.fetch_current_user_saved_tracks(
         max_tracks=max_tracks, 
@@ -177,10 +180,7 @@ def main():
         if fully_synced:
              print("\nInitial library sync complete! You are now up to date.")
              
-             # SAFETY: Set the last_run timestamp to 7 days ago instead of NOW.
-             # This ensures the next "Maintenance Run" scans the last week of history,
-             # catching any songs the user might have added while the initial sync was running.
-             safe_checkpoint = datetime.now(timezone.utc) - timedelta(days=7)
+             safe_checkpoint = datetime.now(timezone.utc)
              state.save_state(safe_checkpoint.isoformat())
              state.clear_sync_offset() # Done with offset
         elif new_offset > 0:
@@ -195,8 +195,6 @@ def main():
         state.log_unclassified_songs(unclassified_songs)
 
     print("\nAll done! Enjoy your organized library.")
-
-
 
 if __name__ == "__main__":
     main()

@@ -58,6 +58,21 @@ class SpotifyClient:
             ),
             requests_session=self.session
         )
+
+        # 3. Create a dedicated session for Auth requests (No rate limit bucket, but with retry logic)
+        # This prevents token refreshes from eating into the API rate limit or being blocked by it.
+        self.auth_session = rate_limiter.create_resilient_session(bucket=None)
+        
+        # Monkey-patch the internal session of the auth_manager to use our resilient auth_session
+        # (The SpotifyOAuth constructor took requests_session=self.session, but we want to swap it for token ops if possible,
+        #  OR we just use self.auth_session for our manual operations).
+        # Actually, let's re-initialize spotipy with the correct session for auth if possible.
+        # But Spotipy splits it.
+        
+        # Let's just use self.auth_session for our manual _force_refresh_token calls.
+        
+        # BETTER: Re-init auth_manager with auth_session
+        self.sp.auth_manager.requests_session = self.auth_session
         
         # Ensure token is valid (crucial for headless execution)
         if config.REFRESH_TOKEN:
@@ -92,9 +107,8 @@ class SpotifyClient:
                 "refresh_token": config.REFRESH_TOKEN
             }
 
-            # Use the existing session (which has rate limiting, though usually not needed for auth)
-            # We use a direct request here, bypassing spotipy's internal logic for this step.
-            response = self.session.post("https://accounts.spotify.com/api/token", data=payload, headers=headers)
+            # Use the dedicated auth_session (Retry logic, NO rate limit bucket)
+            response = self.auth_session.post("https://accounts.spotify.com/api/token", data=payload, headers=headers)
 
             if response.status_code == 200:
                 token_info = response.json()
@@ -132,6 +146,7 @@ class SpotifyClient:
         if self.user_id:
             return self.user_id
             
+        print("Fetching current user profile...")
         self.user_id = self.sp.me()['id']
         return self.user_id
 
@@ -159,7 +174,7 @@ class SpotifyClient:
         
         while True:
             try:
-
+                print(f"   Requesting liked songs batch (offset {offset})...") 
                 response = self.sp._get(f"me/tracks?limit={limit}&offset={offset}")
                 items = response['items']
                 
@@ -241,6 +256,7 @@ class SpotifyClient:
         try:
 
              # Use /me/playlists directly context-aware endpoint
+             print(f"   Requesting creation of playlist '{name}' on Spotify...")
              playlist_id = self.sp._post("me/playlists", payload=payload)['id']
              
         except Exception as e:
@@ -283,7 +299,7 @@ class SpotifyClient:
         user_id = self.get_current_user_id()
         
         while True:
-            print(f"   Fetching playlists from Spotify... (offset {offset})", end='\r')
+            print(f"   Fetching playlists from Spotify... (offset {offset})")
 
             response = self.sp._get(f"me/playlists?limit={limit}&offset={offset}")
             
@@ -352,7 +368,7 @@ class SpotifyClient:
             print(f"Snapshot changed or new. Fetching tracks for {playlist_id}...")
             
             while True:
-
+                print(f"   Requesting playlist items for {playlist_id} (offset {offset})...")
                 response = self.sp._get(f"playlists/{playlist_id}/items?fields=items(track(uri)),next&limit={limit}&offset={offset}")
                 items = response['items']
                 
@@ -442,6 +458,7 @@ class SpotifyClient:
 
                 payload = {"uris": batch}
                 # Explicitly use the 'items' endpoint
+                print(f"   Requesting to add batch of {len(batch)} tracks to {playlist_id}...")
                 response = self.sp._post(f"playlists/{playlist_id}/items", payload=payload)
                 
                 # Update local snapshot ID to prevent unnecessary re-fetching on next run

@@ -125,31 +125,73 @@ class LeakyBucket:
 
 class RateLimitAdapter(HTTPAdapter):
     """
-    A custom HTTPAdapter that handles HTTP 429 (Too Many Requests) errors.
-
-    Respect the 'Retry-After' header provided by the server.
+    A custom HTTPAdapter that handles HTTP 429 (Too Many Requests) errors and other retries.
+    
+    Respects the 'Retry-After' header provided by the server.
+    Ensures that retries also consume tokens from the LeakyBucket.
     """
-    def __init__(self, *args, **kwargs):
+    def __init__(self, bucket=None, *args, **kwargs):
+        self.bucket = bucket
         super().__init__(*args, **kwargs)
 
     def send(self, request, **kwargs):
+        
+        start_kwargs = kwargs.copy()
+        
         while True:
             try:
+                
                 response = super().send(request, **kwargs)
                 
+                # Handle 429 specifically (Rate Limit)
                 if response.status_code == 429:
+                    print("   [429] Too Many Requests. Handling retry...")
+                    # Calculate wait time
                     retry_after = response.headers.get("Retry-After")
+                    wait_time = int(retry_after) + 1 if retry_after else 35
                     
-                    if retry_after:
-                        wait_time = int(retry_after) + 60 # Add 60s buffer
-                        print(f"Rate Limit 429 Hit! Sleeping for {wait_time}s (per Spotify instruction)...")
-                        time.sleep(wait_time)
-                        continue # Retry the request
-                                    
+                    print(f"   Rate Limit 429 Hit! Sleeping for {wait_time}s...")
+                    time.sleep(wait_time)
+                    
+                    # Consume a token for the RETRY attempt
+                    if self.bucket:
+                        self.bucket.acquire()
+                        
+                    continue # Retry the request by looping
+                    
+                if self.max_retries and hasattr(self.max_retries, 'is_retry'):
+                    if response.status_code in self.max_retries.status_forcelist:
+                         try:
+                             retries = self.max_retries.increment(response=response)
+                             retries.sleep(response) 
+                             self.max_retries = retries
+                             
+                             if self.bucket:
+                                 self.bucket.acquire()
+                             continue
+                         except Exception as e:
+                             # Max retries exceeded
+                             print(f"   Max retries exceeded for {response.status_code}.")
+                             return response # Return the error response
+
                 return response
-            except Exception as e:
-                # Check for connection errors that look like rate limits or closed connections?
-                raise e
+
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+                print(f"   Connection/Timeout Error: {e}")
+                # Handle connection errors
+                if self.max_retries:
+                    try:
+                        retries = self.max_retries.increment(error=e)
+                        retries.sleep()
+                        self.max_retries = retries
+                        
+                        if self.bucket:
+                            self.bucket.acquire()
+                        continue
+                    except Exception as retry_err:
+                        print(f"   Max retries exceeded for connection error: {retry_err}")
+                        raise retry_err # Raise the MaxRetryError
+                raise e # If no retry strategy, raise original
 
 class PrintingRetry(Retry):
     """
@@ -162,16 +204,13 @@ class PrintingRetry(Retry):
         
         print(f"   !!! Rate Limit / Error detected. Retrying in {retry_after:.2f} seconds... !!!")
         
-        if retry_after > 300:
-            print(f"   [WARNING] Long retry time detected ({retry_after:.2f}s). Sleeping instead of exiting.")
-            # Optional: can exit rather than sleep:
-            # import sys
-            # sys.exit(1)
+        if retry_after > 0:
+            print(f"   [WARNING] Retry-After request detected. Sleeping for ({retry_after:.2f}s).")
             
-        super().sleep(response)
+        time.sleep(retry_after)
 
-# Rate Limit for Spotify. CAREFUL LIMIT: 5 requests per 30 seconds
-spotify_bucket = LeakyBucket(max_requests=1, time_window_seconds=30.0, bucket_id="spotify_global")
+# Rate Limit for Spotify. CAREFUL LIMIT: 1 request per 60 seconds
+spotify_bucket = LeakyBucket(max_requests=1, time_window_seconds=60.0, bucket_id="spotify_global")
 
 # Rate Limit for Last.fm. 4 requests per second
 lastfm_bucket = LeakyBucket(max_requests=5, time_window_seconds=1.0, bucket_id="lastfm_global")
@@ -207,7 +246,7 @@ def create_resilient_session(bucket, retries=3, backoff_factor=1.0):
         allowed_methods=["HEAD", "GET", "PUT", "DELETE", "OPTIONS", "TRACE", "POST"]
     )
     
-    adapter = RateLimitAdapter(max_retries=retry_strategy)
+    adapter = RateLimitAdapter(max_retries=retry_strategy, bucket=bucket)
     session.mount("https://", adapter)
     session.mount("http://", adapter)
     
