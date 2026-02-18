@@ -121,4 +121,8 @@ This repository includes a GitHub Actions workflow (`.github/workflows/daily_syn
 ---
 
 ## 🛡️ License
-This project is licensed under the MIT Licence. See `LICENSE` for details.
+This project is licensed under the **MIT Licence**. 
+
+This means you are free to use, copy, modify, and distribute the software for any purpose, including commercial applications, provided that the original copyright notice and this permission notice are included in all copies or substantial portions of the software.
+
+*See the [LICENSE](LICENSE) file for the full text.*
