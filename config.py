@@ -201,7 +201,7 @@ DRY_RUN = False
 
 # Batch Size: Maximum number of tracks to process per run.
 # Set to None to process all new tracks.
-MAX_TRACKS_TO_PROCESS = 500
+MAX_TRACKS_TO_PROCESS = None
 
 # Set to True to force a re-fetch of playlists from Spotify, ignoring the local database cache.
 # Useful if you created a playlist manually and want the script to see it immediately.
