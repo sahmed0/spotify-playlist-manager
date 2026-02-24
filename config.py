@@ -101,19 +101,6 @@ GENRE_MAPPING = {
     # (Catch-alls for songs that didn't match the specific buckets above)
     # -------------------------------------------------------------------------
 
-    'Rock': [
-        'rock', 'hard rock', 'alternative rock', 'blues rock', 'southern rock',
-        'garage rock', 'roots rock', 'pub rock', 'heartland rock', 'arena rock',
-        'jam band', 'rock & roll', 'rock and roll', 'j-rock'
-    ],
-    'Pop': [
-        'pop', 'dance pop', 'teen pop', 'boy band', 'girl group',
-        'europop', 'bubblegum pop', 'art pop', 'sophisti-pop', 'power pop'
-    ],
-    'Hip Hop': [
-        'hip hop', 'rap', 'underground hip hop', 'alternative hip hop',
-        'hardcore hip hop', 'conscious hip hop', 'boom bap', 'turntablism'
-    ],
     'Electronic': [
         'electronic', 'electronica', 'idm', 'downtempo', 'breakbeat',
         'electro', 'complextro', 'glitch', 'trip hop'
