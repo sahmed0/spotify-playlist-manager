@@ -1,8 +1,10 @@
 # Spotify Liked Songs Sorter
 
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+
 A robust, enterprise-grade automation tool designed to organise your Spotify "Liked Songs" into genre-specific playlists. Engineered for high reliability, it navigates the complexities of the 2026 Spotify API landscape using intelligent synchronisation, strict rate limiting, and persistent state management.
 
-## 🚀 Key Features
+## Key Features
 
 -   **Smart Incremental Sync**: The sorter tracks your library state in a local SQLite database, processing *only* new tracks since the last run. It handles large libraries (10,000+ songs) efficiently by using Spotify's `snapshot_id` to avoid redundant API calls.
 -   **Precision Tagging**: Utilises the **Last.fm API** to fetch granular song and artist tags. It employs a multi-tiered fallback strategy (Track Tags -> Artist Tags -> Cache) to ensure high classification accuracy.
@@ -12,7 +14,7 @@ A robust, enterprise-grade automation tool designed to organise your Spotify "Li
 
 ---
 
-## 🏗️ Technical Architecture
+## Technical Architecture
 
 This application is built on a modular, service-oriented architecture designed for maintainability and scalability.
 
@@ -54,7 +56,7 @@ graph TD
 
 ---
 
-## 🧠 Solved Challenges
+## Solved Challenges
 
 ### 1. The Rate Limit Problem
 Spotify's API (especially in non-commercial usage) can be aggressive with rate limits. 
@@ -77,7 +79,7 @@ Spotify removed public genre data from their API years ago.
 
 ---
 
-## 🛠️ Installation & Setup
+## Installation & Setup
 
 ### Prerequisites
 *   **Python 3.9+**
@@ -113,16 +115,19 @@ To test without modifying your library, set `DRY_RUN = True` in `config.py` or u
 
 ---
 
-## 🤖 Automated Workflows
+## Automated Workflows
 This repository includes a GitHub Actions workflow (`.github/workflows/daily_sync.yml`) designed to run the sorter automatically every 24 hours.
 *   It caches the `state.db` file between runs to maintain incremental sync state.
 *   It uses GitHub Secrets to securely inject your API credentials.
 
 ---
 
-## 🛡️ License
-This project is licensed under the **MIT Licence**. 
+## License
 
-This means you are free to use, copy, modify, and distribute the software for any purpose, including commercial applications, provided that the original copyright notice and this permission notice are included in all copies or substantial portions of the software.
+Copyright © 2026 Sajid Ahmed
 
-*See the [LICENSE](LICENSE) file for the full text.*
+This program is free software: you can redistribute it and/or modify it under the terms of the **GNU General Public License** as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but **WITHOUT ANY WARRANTY**; without even the implied warranty of **MERCHANTABILITY** or **FITNESS FOR A PARTICULAR PURPOSE**. 
+
+See the [LICENSE](LICENSE) file for more details.
