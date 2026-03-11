@@ -1,10 +1,11 @@
 """
 Configuration settings for the Spotify Liked Songs Organiser application.
+This centralises all environment variables and categorisation rules to maintain 
+a single source of truth for the sorting logic and API configurations.
 """
 import os
 from dotenv import load_dotenv
 
-# Load environment variables from .env file if it exists (for local development)
 load_dotenv()
 
 CLIENT_ID = os.getenv("SPOTIPY_CLIENT_ID")
@@ -13,22 +14,11 @@ REDIRECT_URI = os.getenv("SPOTIPY_REDIRECT_URI")
 REFRESH_TOKEN = os.getenv("SPOTIPY_REFRESH_TOKEN")
 LASTFM_API_KEY = os.getenv("LASTFM_API_KEY")
 
-# Scope required for the app
 SCOPE = "user-library-read playlist-modify-private playlist-modify-public playlist-read-private"
 
-# Sorting Configuration
-# STOP_AFTER_FIRST_MATCH:
-# True: Song goes into FIRST matching bucket only (Priority based on GENRE_MAPPING order).
-# False: Song goes into ALL matching buckets (e.g. Rock AND Workout).
-STOP_AFTER_FIRST_MATCH = True
+SHOULD_STOP_AFTER_FIRST_MATCH = True
 
 GENRE_MAPPING = {
-    # -------------------------------------------------------------------------
-    # 1. SPECIFIC SUB-GENRES & NICHE STYLES
-    # (Check these first to prevent them being swallowed by broad categories)
-    # -------------------------------------------------------------------------
-
-    # --- Specific Electronic & Dance ---
     'Techno': ['techno', 'detroit techno', 'minimal techno', 'acid techno', 'dub techno', 'industrial techno'],
     'House': [
         'house', 'deep house', 'tech house', 'progressive house', 'acid house',
@@ -40,7 +30,6 @@ GENRE_MAPPING = {
     'Synthpop': ['synthpop', 'synth-pop', 'electropop', 'futurepop', 'dark wave'],
     'Hyperpop': ['hyperpop', 'glitchcore', 'digicore', 'pc music', 'bubblegum bass'],
 
-    # --- Specific Rock & Metal ---
     'Heavy Metal': [
         'metal', 'heavy metal', 'thrash metal', 'death metal', 'black metal',
         'metalcore', 'doom metal', 'power metal', 'groove metal', 'nu metal',
@@ -59,7 +48,6 @@ GENRE_MAPPING = {
     'Emo': ['emo', 'emo rap', 'screamo', 'midwest emo', 'emotional hardcore'],
     'Slowcore': ['slowcore', 'sadcore'],
 
-    # --- Specific Hip Hop ---
     'Trap': ['trap', 'southern hip hop', 'atlanta hip hop', 'trap soul'],
     'Drill': ['drill', 'uk drill', 'chicago drill', 'brooklyn drill', 'ny drill'],
     'Grime': ['grime', 'uk garage', 'sublow', 'eskibeat'],
@@ -68,13 +56,11 @@ GENRE_MAPPING = {
     'East Coast Hip Hop': ['east coast hip hop', 'new york hip hop', 'boom bap', 'mafioso rap'],
     'West Coast Hip Hop': ['west coast hip hop', 'g-funk', 'gangsta rap', 'hyphy'],
 
-    # --- Specific Regional Rap ---
     'Dutch Rap': ['dutch rap', 'nederhop', 'dutch hip hop'],
     'German Rap': ['german rap', 'deutschrap', 'german hip hop'],
     'French Rap': ['french rap', 'rap francais', 'cloud rap francais'],
     'Australian Rap': ['australian rap', 'aussie hip hop', 'australian hip hop'],
 
-    # --- Retro & Specific Pop/Soul ---
     'Disco': ['disco', 'nu-disco', 'italo disco', 'euro disco', 'post-disco', 'boogie'],
     'Motown': ['motown', 'the sound of young america', 'detroit soul'],
     'Northern Soul': ['northern soul', 'mod', 'rare soul'],
@@ -82,7 +68,6 @@ GENRE_MAPPING = {
     'Madchester': ['madchester', 'baggy', 'alternative dance', 'grebo'],
     'Funk': ['funk', 'p-funk', 'funk rock', 'deep funk', 'go-go', 'boogie'],
 
-    # --- Specific Regional / Cultural Styles ---
     'Afrobeats': ['afrobeats', 'afropop', 'afro fusion', 'alte', 'naija'],
     'K-pop': ['k-pop', 'korean pop', 'k-rock', 'k-hip hop', 'korean r&b'],
     'Bollywood': ['bollywood', 'filmi', 'hindi film', 'indian pop'],
@@ -95,11 +80,6 @@ GENRE_MAPPING = {
     'Salsa & Tropical': ['salsa', 'bachata', 'merengue', 'cumbia', 'vallenato', 'tropical'],
     'Latin Urbano': ['latin urbano', 'urbano latino', 'latin hip hop', 'latin trap', 'dembow'],
     'Flamenco': ['flamenco', 'nuevo flamenco', 'rumba flamenca', 'flamenco pop'],
-
-    # -------------------------------------------------------------------------
-    # 2. BROAD / UMBRELLA GENRES
-    # (Catch-alls for songs that didn't match the specific buckets above)
-    # -------------------------------------------------------------------------
 
     'Electronic': [
         'electronic', 'electronica', 'idm', 'downtempo', 'breakbeat',
@@ -129,7 +109,6 @@ GENRE_MAPPING = {
     ],
     'Opera': ['opera', 'operetta', 'aria', 'bel canto'],
 
-    # --- Broad Regional Buckets ---
     'African Music': ['african', 'highlife', 'soukous', 'juju', 'coupé-décalé', 'afrobeat', 'desert blues'],
     'Brazilian Music': [
         'brazilian', 'samba', 'bossa nova', 'mpb', 'baile funk',
@@ -148,16 +127,11 @@ GENRE_MAPPING = {
     'Pakistani Music': ['pakistani', 'pakistani pop', 'urdu', 'lollywood', 'pakistani rock', 'urdu pop'],
 }
 
-# Songs that don't match any bucket go here
 UNSORTED_PLAYLIST_NAME = "Unsorted"
 
-# Safety: Set to True to run main.py with read-only API calls (eg fetch tracks/playlists), without making 'write' API calls (eg add/remove tracks).
-DRY_RUN = False
+IS_DRY_RUN = False
 
-# Batch Size: Maximum number of tracks to process per run.
-# Set to None to process all new tracks.
-MAX_TRACKS_TO_PROCESS = None
+# This maximum only applies to Last.fm (Spotify limit is defined by user in CLI)
+MAX_TRACKS_TO_PROCESS = 50
 
-# Set to True to force a re-fetch of playlists from Spotify, ignoring the local database cache.
-# Useful if you created a playlist manually and want the script to see it immediately.
-RESET_PLAYLIST_CACHE = False
+SHOULD_RESET_PLAYLIST_CACHE = False

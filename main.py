@@ -1,200 +1,264 @@
 """
 Main entry point for the Spotify Liked Songs Organiser application.
+This exposes a robust, interactive CLI menu mapping to operations 1-8, 
+orchestrating changes across the local SQLite database state and the Spotify API.
 """
 import config
 import app_state as state
+import auth_helper
+import lastfm_client
+import sorter
 from spotify_client import SpotifyClient
-from sorter import categorise_tracks
-from lastfm_client import LastFMClient
 
-from datetime import datetime, timezone, timedelta
+def op1Authenticate():
+    """Operation 1: Initiates the manual OAuth authentication flow to generate a Spotify Refresh Token."""
+    print("\n--- Operation 1: Authenticate ---")
+    auth_helper.generateToken()
 
-def main():
-    """
+def op2FetchLikedSongs():
+    """Operation 2: Fetches liked songs from Spotify and saves them to the local database."""
+    print("\n--- Operation 2: Fetch Liked Songs ---")
+    client = SpotifyClient(isDryRun=config.IS_DRY_RUN)
     
-    Execute the main logic of the Spotify Liked Songs Organiser.
-
-    Authenticates with Spotify, fetches liked songs, retrieves genre tags from Last.fm,
-    sorts songs into playlists, and syncs changes to Spotify.
+    maxInput = input("How many tracks to fetch? (Enter for all): ").strip()
+    maxTracks = int(maxInput) if maxInput.isdigit() else None
     
-    """
-    print("Starting Spotify Liked Songs Organiser...")
-    
-    # Check for Dry Run
-    if config.DRY_RUN:
-        print(">>> DRY RUN MODE ENABLED <<<")
-
-    # 1. Load State
-    last_run = state.load_state()
-    start_offset = 0
-
-    if last_run:
-        print(f"Last sync detected: {last_run}")
-        print("Checking for new songs only...")
-    else:
-        # Check for partial sync state
-        start_offset = state.get_sync_offset()
-        if start_offset > 0:
-            print(f"Resuming initial sync from offset {start_offset}...")
-        else:
-            print("No previous state found. Running full sync.")
-
-    try:
-        client = SpotifyClient(dry_run=config.DRY_RUN)
-        user_id = client.get_current_user_id()
-        print(f"Authenticated as user: {user_id}")
+    startOffset = state.getMemoryVal("likedSongsOffset", 0)
+    if startOffset is not None:
+        startOffset = int(startOffset)
         
-        # Build cache immediately as requested
-        # Check if we should force refresh (e.g. if user added playlists manually outside the script)
-        # Note: Set RESET_PLAYLIST_CACHE = False in config.py to save API calls
-        force_refresh = getattr(config, 'RESET_PLAYLIST_CACHE', False)
-        client.refresh_playlist_cache(force=force_refresh)
-        
-    except Exception as e:
-        print(f"Authentication failed: {e}")
-        return
-
-    # 2. Fetch Liked Songs
-    # Determine max tracks based on config
-    max_tracks = config.MAX_TRACKS_TO_PROCESS
-    
-    # If Dry Run is enabled and no specific limit is set, default to 100 for safety
-    if config.DRY_RUN and max_tracks is None:
-        max_tracks = 100
-
-    # Incremental Sync Setup (start_offset already initialized above)
-        
-    liked_songs, new_offset, fully_synced = client.fetch_current_user_saved_tracks(
-        max_tracks=max_tracks, 
-        cutoff_date=last_run,
-        start_offset=start_offset
+    if startOffset > 0:
+         print(f"Resuming from previous offset: {startOffset}")
+         
+    results, newOffset, isFullySynced = client.fetchCurrentUserSavedTracks(
+        maxTracks=maxTracks, 
+        startOffset=startOffset
     )
     
-    if not liked_songs:
-        print("No (new) liked songs found in this batch.")
-        if fully_synced:
-             print("Library scan complete.")
-    
-    # Filter for incremental sync
-    new_songs = []
-
-    processed_tracks = state.get_processed_tracks()
-    skipped_count = 0
-    
-    for song in liked_songs:
-        if state.is_track_newer(song['added_at'], last_run):
-            # Persistence Check: Skip if already processed
-            if song['uri'] in processed_tracks:
-                skipped_count += 1
-                continue
-                
-            new_songs.append(song)
-
-    
-    if skipped_count > 0:
-        print(f"Skipped {skipped_count} songs already processed.")
-    
-    if not new_songs:
-        print("No (new) songs to sort in this batch.")
-        # Fall through to allow saving state if needed
+    if results:
+        state.saveLikedSongs(results)
+        print(f"Saved {len(results)} tracks to database.")
         
-    print(f"Found {len(new_songs)} new songs to sort.")
-
-    if config.DRY_RUN:
-       print(">>> DRY RUN: Processing limited to fetched songs (max 10) <<<")
-
-    # 3. Fetch Genres (via Last.fm - Track Tags > Artist Tags)
-    print("Fetching tags from Last.fm")
+    state.setMemoryVal("likedSongsOffset", newOffset)
     
-    # Store tags per song URI (most specific)
-    from lastfm_client import enrich_tracks
-    track_tags_map = enrich_tracks(new_songs)
-    print("\nLast.fm tagging complete.")
+    if isFullySynced:
+        print("Finished syncing all liked songs.")
 
-    # 4. Sort Songs
-    print("Sorting songs into buckets...")
+def op3FetchLastfmTags():
+    """Operation 3: Retrieves genre tags from Last.fm for tracks missing metadata in the database."""
+    print("\n--- Operation 3: Fetch Last.fm Tags ---")
     
-    sorted_playlists = categorise_tracks(new_songs, track_tags_map)
-    
-    # 5. Review & Sync
-    total_sorted = 0
-    for bucket, songs in sorted_playlists.items():
-        count = len(songs)
-        total_sorted += count
-        print(f"Bucket '{bucket}': {count} songs")
+    limit = config.MAX_TRACKS_TO_PROCESS
+    tracks = state.getTracksMissingTags(limit=limit)
+    if not tracks:
+        print("All tracks have Last.fm tags.")
+        return
         
-    print(f"Total playlist placements: {total_sorted}")
-    print(f"Unique songs sorted: {len(new_songs)}")
+    print(f"Fetching tags for {len(tracks)} tracks...")
     
-    # Sync to Spotify
-    print("\nSyncing to Spotify Playlists...")
-    if config.DRY_RUN:
-        print(">>> DRY RUN MODE ENABLED: No changes will be made to Spotify. <<<")
+    tagsMap = lastfm_client.enrichTracks(tracks)
     
-    all_processed_uris = set()
+    print("\nSaving tags to database...")
+    savedCount = 0
+    for trackUri, tags in tagsMap.items():
+        state.updateTrackTags(trackUri, tags)
+        savedCount += 1
+        
+    print(f"Finished fetching Last.fm tags for {savedCount} tracks.")
 
-    for bucket, songs in sorted_playlists.items():
-        if not songs:
-            continue
+def op4SortSongs():
+    """Operation 4: Classifies unclassified tracks into genre buckets based on their Last.fm tags."""
+    print("\n--- Operation 4: Sort Songs ---")
+    
+    tracks = state.getUnclassifiedTracks()
+    if not tracks:
+        print("No unclassified tracks found or all tracks are already ranked.")
+        return
+        
+    print(f"Sorting {len(tracks)} tracks into buckets...")
+    
+    trackBucketsMap = sorter.categoriseTracks(tracks)
+    
+    for trackUri, buckets in trackBucketsMap.items():
+        state.updateTrackSorting(trackUri, buckets)
+        
+    print(f"Finished sorting {len(trackBucketsMap)} tracks.")
+
+def op5FetchUserPlaylists():
+    """Operation 5: Synchronises the local cache of the user's Spotify playlists."""
+    print("\n--- Operation 5: Fetch User Playlists ---")
+    client = SpotifyClient(isDryRun=config.IS_DRY_RUN)
+    
+    client.refreshPlaylistCache(force=True)
+    
+    playlists = state.getAllCachedPlaylists()
+    print(f"Successfully cached {len(playlists)} user playlists.")
+
+def op6CreateMissingPlaylists():
+    """Operation 6: Identifies and creates playlists on Spotify that exist in config but not on the account."""
+    print("\n--- Operation 6: Create Missing Playlists ---")
+    
+    expectedPlaylists = list(config.GENRE_MAPPING.keys())
+    if config.UNSORTED_PLAYLIST_NAME not in expectedPlaylists:
+        expectedPlaylists.append(config.UNSORTED_PLAYLIST_NAME)
+        
+    cachedPlaylists = state.getAllCachedPlaylists()
+    
+    missingPlaylists = [name for name in expectedPlaylists if name not in cachedPlaylists]
+    
+    if not missingPlaylists:
+        print("All configured playlists already exist in the database cache.")
+        return
+        
+    print(f"Found {len(missingPlaylists)} missing playlists. These will be created on Spotify:")
+    for p in missingPlaylists:
+        print(f" - {p}")
+        
+    confirm = input("Proceed with creating these playlists? (y/n): ").strip().lower()
+    if confirm != 'y':
+        print("Operation cancelled.")
+        return
+        
+    client = SpotifyClient(isDryRun=config.IS_DRY_RUN)
+    for name in missingPlaylists:
+        client.createPlaylistForCurrentUser(name)
+        
+    print(f"Finished creating {len(missingPlaylists)} missing playlists.")
+
+def _selectPlaylist(promptText):
+    """Helper to select a playlist from the cache interactively."""
+    playlists = state.getAllCachedPlaylists()
+    if not playlists:
+        print("No playlists found in local cache. Run Operation 5 first.")
+        return None, None
+        
+    print("\nAvailable Playlists:")
+    names = list(playlists.keys())
+    names.sort()
+    for i, name in enumerate(names, 1):
+        print(f"{i}. {name}")
+        
+    choice = input(f"{promptText} (Enter 1-{len(names)}, or 'all'): ").strip().lower()
+    
+    if choice == 'all':
+        return 'all', playlists
+        
+    if choice.isdigit():
+        idx = int(choice) - 1
+        if 0 <= idx < len(names):
+            name = names[idx]
+            return name, playlists[name]
             
-        print(f"Syncing '{bucket}'... ({len(songs)} songs)")
-        
-        # Get playlist ID (create if needed)
-        playlist_id = client.get_or_create_playlist(bucket)
-        
-        # Get list of URIs
-        track_uris = [s['uri'] for s in songs]
-        
-        if not config.DRY_RUN:
-             def checkpoint_callback(batch_uris):
-                 print(f"   -> Checkpoint: Saving {len(batch_uris)} tracks to DB...")
-                 state.bulk_mark_tracks_as_processed(batch_uris)
-        else:
-             checkpoint_callback = None
+    print("Invalid selection.")
+    return None, None
 
-        # Update playlist (Adds only missing tracks)
-        # Pass callback for granular checkpointing
-        client.add_unique_tracks_to_playlist(playlist_id, track_uris, on_batch_success=checkpoint_callback)
-        
-        # Add processed tracks to database
-        for uri in track_uris:
-            all_processed_uris.add(uri)
-
-        # ---------------------------------------------------------
-        # INCREMENTAL CHECKPOINT: Handled via callback inside add_unique_tracks_to_playlist
-        # ---------------------------------------------------------
-
-    # Handling for Unsorted playlist - we also consider these "processed" 
-    unsorted_songs = sorted_playlists.get(config.UNSORTED_PLAYLIST_NAME, [])
-    for s in unsorted_songs:
-        all_processed_uris.add(s['uri'])
+def op7SnapshotPlaylist():
+    """Operation 7: Records a local snapshot of tracks currently in a Spotify playlist."""
+    print("\n--- Operation 7: Snapshot Playlist ---")
     
-    # Save State (Only if not Dry Run)
-    if not config.DRY_RUN:
-        # 1. Update Processed Tracks (For Unsorted & leftovers)
-        # We already saved processed tracks incrementally, but this is a final sweep to catch 'Unsorted' or any edge cases.
-        if all_processed_uris:
-            state.bulk_mark_tracks_as_processed(list(all_processed_uris))
-
-        # 2. Update Sync State
-        if fully_synced:
-             print("\nInitial library sync complete! You are now up to date.")
-             
-             safe_checkpoint = datetime.now(timezone.utc)
-             state.save_state(safe_checkpoint.isoformat())
-             state.clear_sync_offset() # Done with offset
-        elif new_offset > 0:
-             # If we advanced the offset
-             print(f"\nPartial sync complete. Saved progress at offset {new_offset}. Run again to continue.")
-             state.save_sync_offset(new_offset)
+    name, playlistData = _selectPlaylist("Select a playlist to snapshot")
+    if not name:
+        return
         
-    # 6. Logging Unclassified Songs
-    unclassified_songs = sorted_playlists.get(config.UNSORTED_PLAYLIST_NAME, [])
-    if unclassified_songs:
-        print(f"Logging {len(unclassified_songs)} unclassified songs...")
-        state.log_unclassified_songs(unclassified_songs)
+    client = SpotifyClient(isDryRun=config.IS_DRY_RUN)
+    
+    if name == 'all':
+        playlists = playlistData
+        print(f"Snapshotting all {len(playlists)} playlists...")
+        for plName, plId in playlists.items():
+            print(f"\nSnapshotting '{plName}'...")
+            client.getPlaylistTracks(plId)
+        print("\nFinished snapshotting all playlists.")
+    else:
+        playlistId = playlistData
+        print(f"Snapshotting '{name}'...")
+        client.getPlaylistTracks(playlistId)
+        print("Snapshot complete.")
 
-    print("\nAll done! Enjoy your organized library.")
+def op8SyncAndAddSongs():
+    """Operation 8: Pushes sorted tracks from the local database to their respective Spotify playlists."""
+    print("\n--- Operation 8: Sync & Add Songs ---")
+    
+    name, playlistData = _selectPlaylist("Select a playlist to sync songs to")
+    if not name:
+        return
+        
+    client = SpotifyClient(isDryRun=config.IS_DRY_RUN)
+    
+    def syncSinglePlaylist(plName, plId):
+        print(f"\nSyncing '{plName}'...")
+        
+        targetUris = state.getTracksForPlaylist(plName)
+        if not targetUris:
+            print(f"No sorted tracks found for '{plName}' in the local database.")
+            return
+            
+        print(f"Found {len(targetUris)} target tracks in local DB for '{plName}'.")
+        
+        client.addUniqueTracksToPlaylist(plId, targetUris)
+        
+    if name == 'all':
+        playlists = playlistData
+        print(f"Syncing all {len(playlists)} playlists...")
+        for plName, plId in list(playlists.items()):
+            syncSinglePlaylist(plName, plId)
+        print("\nFinished syncing all playlists.")
+    else:
+        syncSinglePlaylist(name, playlistData)
+        print("\nSync complete.")
+
+def printMenu():
+    """Displays the main interactive menu for the Spotify Liked Songs Organiser."""
+    print("\n" + "="*40)
+    print(" Spotify Liked Songs Organiser CLI")
+    print("="*40)
+    print("1. Authenticate")
+    print("2. Fetch Liked Songs")
+    print("3. Fetch Last.fm Tags")
+    print("4. Sort Songs")
+    print("5. Fetch User Playlists")
+    print("6. Create Missing Playlists")
+    print("7. Snapshot Playlist")
+    print("8. Sync & Add Songs")
+    print("0. Exit")
+    print("="*40)
+
+def mainLoop():
+    """
+    Executes the main interactive loop of the Spotify Liked Songs Organiser.
+    This maintains the terminal UI running indefinitely until explicit exit.
+    """
+    print("Starting Spotify Liked Songs Organiser...")
+    state.initDb() 
+    
+    if config.IS_DRY_RUN:
+        print(">>> DRY RUN MODE ENABLED <<<")
+
+    while True:
+        printMenu()
+        choice = input("Select an operation (0-8): ").strip()
+
+        if choice == '0':
+            print("Exiting...")
+            break
+        elif choice == '1':
+            op1Authenticate()
+        elif choice == '2':
+            op2FetchLikedSongs()
+        elif choice == '3':
+            op3FetchLastfmTags()
+        elif choice == '4':
+            op4SortSongs()
+        elif choice == '5':
+            op5FetchUserPlaylists()
+        elif choice == '6':
+            op6CreateMissingPlaylists()
+        elif choice == '7':
+            op7SnapshotPlaylist()
+        elif choice == '8':
+            op8SyncAndAddSongs()
+        else:
+            print("Invalid selection. Please enter a number between 0 and 8.")
 
 if __name__ == "__main__":
-    main()
+    mainLoop()

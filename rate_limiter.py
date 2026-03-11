@@ -1,7 +1,7 @@
 """
 Rate limiting utilities for API clients.
-
-Includes a Leaky Bucket implementation and a custom Requests adapter for handling 429 errors.
+This module enforces Spotify and Last.fm API limits via a Leaky Bucket algorithm 
+to prevent our application from being temporarily banned by remote servers.
 """
 import time
 import random
@@ -15,97 +15,93 @@ import app_state as state
 class LeakyBucket:
     """
     A thread-safe Leaky Bucket rate limiter implementation with database persistence.
-
-    Enforce a strict limit of N requests per T seconds rolling window.
+    This guarantees that we strictly enforce N requests per T seconds rolling window.
     """
-    def __init__(self, max_requests, time_window_seconds, bucket_id):
-        self.max_requests = max_requests
-        self.time_window_seconds = time_window_seconds
-        self.bucket_id = bucket_id
-        if max_requests > 0:
-            self.average_spacing = time_window_seconds / max_requests
+    def __init__(self, maxRequests, timeWindowSeconds, bucketId):
+        self.maxRequests = maxRequests
+        self.timeWindowSeconds = timeWindowSeconds
+        self.bucketId = bucketId
+        if maxRequests > 0:
+            self.averageSpacing = timeWindowSeconds / maxRequests
         else:
-            self.average_spacing = 0
+            self.averageSpacing = 0
         self.lock = threading.Lock()
         
-        # Load state from DB
         try:
-            stored_timestamps = state.get_rate_limit_data(self.bucket_id)
-            # Filter out old timestamps immediately
+            storedTimestamps = state.getRateLimitData(self.bucketId)
             
-            self.request_timestamps = []
+            self.requestTimestamps = []
             
-            current_time = time.time()
-            valid_window_start = current_time - self.time_window_seconds
+            currentTime = time.time()
+            validWindowStart = currentTime - self.timeWindowSeconds
             
-            self.request_timestamps = [t for t in stored_timestamps if t > valid_window_start]
+            self.requestTimestamps = [t for t in storedTimestamps if t > validWindowStart]
             
-            if self.request_timestamps:
-                print(f"   Loaded {len(self.request_timestamps)} recent requests for bucket '{self.bucket_id}' from DB.")
+            if self.requestTimestamps:
+                print(f"   Loaded {len(self.requestTimestamps)} recent requests for bucket '{self.bucketId}' from DB.")
                 
         except Exception as e:
-            print(f"Warning: Failed to load rate limit state for {self.bucket_id}: {e}")
-            self.request_timestamps = []
+            print(f"Warning: Failed to load rate limit state for {self.bucketId}: {e}")
+            self.requestTimestamps = []
 
-    def _clean_old_requests(self):
-        """Remove timestamps outside the current rolling window."""
+    def _cleanOldRequests(self):
+        """
+        Removes timestamps outside the current rolling window.
+        This reclaims capacity so subsequent requests are unblocked.
+        """
         now = time.time()
-        cutoff = now - self.time_window_seconds
-        self.request_timestamps = [t for t in self.request_timestamps if t > cutoff]
+        cutoff = now - self.timeWindowSeconds
+        self.requestTimestamps = [t for t in self.requestTimestamps if t > cutoff]
 
-    def _sleep_with_jitter(self, wait_time, log_threshold=0.0):
-        """Standardise jitter calculation, logging, and sleeping."""
-        if wait_time <= 0:
+    def _sleepWithJitter(self, waitTime, logThreshold=0.0):
+        """
+        Standardises jitter calculation, logging, and sleeping.
+        This prevents immediate bursting when a large batch of requests wakes up simultaneously.
+        """
+        if waitTime <= 0:
             return
             
-        # Add jitter (5-10% of wait time)
-        jitter = wait_time * random.uniform(0.1, 0.2)
-        total_wait = wait_time + jitter
+        jitter = waitTime * random.uniform(0.1, 0.2)
+        totalWait = waitTime + jitter
         
-        # Only log if the wait is significant enough
-        if total_wait > log_threshold:
-            print(f"Rate Limit ({self.bucket_id}): Pausing for {total_wait:.2f}s")
+        if totalWait > logThreshold:
+            print(f"Rate Limit ({self.bucketId}): Pausing for {totalWait:.2f}s")
         
-        time.sleep(total_wait)
+        time.sleep(totalWait)
 
     def acquire(self):
-        """Block until a request token becomes available in the bucket."""
+        """
+        Blocks until a request token becomes available in the bucket.
+        This is the primary gateway function to stall processing before exceeding limits.
+        """
         with self.lock:
-            # 1. Enforce Spacing between API calls (Rather than bursts)
-            if self.request_timestamps and self.average_spacing > 0:
-                last_request_time = self.request_timestamps[-1]
-                target_time = last_request_time + self.average_spacing
+            if self.requestTimestamps and self.averageSpacing > 0:
+                lastRequestTime = self.requestTimestamps[-1]
+                targetTime = lastRequestTime + self.averageSpacing
                 now = time.time()
                 
-                if now < target_time:
-                    wait_time = target_time - now
-                    # Log only if wait > 1s for spacing (spam reduction)
-                    self._sleep_with_jitter(wait_time, log_threshold=1.0)
+                if now < targetTime:
+                    waitTime = targetTime - now
+                    self._sleepWithJitter(waitTime, logThreshold=1.0)
 
-            self._clean_old_requests()
+            self._cleanOldRequests()
             
-            while len(self.request_timestamps) >= self.max_requests:
-                # Calculate wait time
-                oldest_timestamp = self.request_timestamps[0]
+            while len(self.requestTimestamps) >= self.maxRequests:
+                oldestTimestamp = self.requestTimestamps[0]
                 now = time.time()
-                wait_time = (oldest_timestamp + self.time_window_seconds) - now
+                waitTime = (oldestTimestamp + self.timeWindowSeconds) - now
                 
-                if wait_time > 0:
-                    # Always log capacity waits
-                    self._sleep_with_jitter(wait_time, log_threshold=0.0)
+                if waitTime > 0:
+                    self._sleepWithJitter(waitTime, logThreshold=0.0)
                 
-                # Re-clean after waking up
-                self._clean_old_requests()
+                self._cleanOldRequests()
             
-            # Add current timestamp
             now = time.time()
-            self.request_timestamps.append(now)
+            self.requestTimestamps.append(now)
             
-            # Save state
             try:
-                state.save_rate_limit_data(self.bucket_id, self.request_timestamps)
+                state.saveRateLimitData(self.bucketId, self.requestTimestamps)
             except Exception as e:
-                # Don't crash on DB error, just warn
                 print(f"Warning: Failed to save rate limit state: {e}")
 
     def __enter__(self):
@@ -126,38 +122,29 @@ class LeakyBucket:
 class RateLimitAdapter(HTTPAdapter):
     """
     A custom HTTPAdapter that handles HTTP 429 (Too Many Requests) errors and other retries.
-    
-    Respects the 'Retry-After' header provided by the server.
-    Ensures that retries also consume tokens from the LeakyBucket.
+    This guarantees we respect Retry-After headers proactively and consume LeakyBucket tokens correctly.
     """
     def __init__(self, bucket=None, *args, **kwargs):
         self.bucket = bucket
         super().__init__(*args, **kwargs)
 
     def send(self, request, **kwargs):
-        
-        start_kwargs = kwargs.copy()
-        
         while True:
             try:
-                
                 response = super().send(request, **kwargs)
                 
-                # Handle 429 specifically (Rate Limit)
                 if response.status_code == 429:
                     print("   [429] Too Many Requests. Handling retry...")
-                    # Calculate wait time
-                    retry_after = response.headers.get("Retry-After")
-                    wait_time = int(retry_after) + 1 if retry_after else 35
+                    retryAfter = response.headers.get("Retry-After")
+                    waitTime = int(retryAfter) + 1 if retryAfter else 35
                     
-                    print(f"   Rate Limit 429 Hit! Sleeping for {wait_time}s...")
-                    time.sleep(wait_time)
+                    print(f"   Rate Limit 429 Hit! Sleeping for {waitTime}s...")
+                    time.sleep(waitTime)
                     
-                    # Consume a token for the RETRY attempt
                     if self.bucket:
                         self.bucket.acquire()
                         
-                    continue # Retry the request by looping
+                    continue 
                     
                 if self.max_retries and hasattr(self.max_retries, 'is_retry'):
                     if response.status_code in self.max_retries.status_forcelist:
@@ -169,16 +156,14 @@ class RateLimitAdapter(HTTPAdapter):
                              if self.bucket:
                                  self.bucket.acquire()
                              continue
-                         except Exception as e:
-                             # Max retries exceeded
+                         except Exception:
                              print(f"   Max retries exceeded for {response.status_code}.")
-                             return response # Return the error response
+                             return response 
 
                 return response
 
             except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
                 print(f"   Connection/Timeout Error: {e}")
-                # Handle connection errors
                 if self.max_retries:
                     try:
                         retries = self.max_retries.increment(error=e)
@@ -190,34 +175,33 @@ class RateLimitAdapter(HTTPAdapter):
                         continue
                     except Exception as retry_err:
                         print(f"   Max retries exceeded for connection error: {retry_err}")
-                        raise retry_err # Raise the MaxRetryError
-                raise e # If no retry strategy, raise original
+                        raise retry_err 
+                raise e 
 
 class PrintingRetry(Retry):
     """
     A subclass of Retry that prints a message to the terminal when a retry occurs.
+    This gives the user visibility into transient network stalls without crashing.
     """
     def sleep(self, response=None):
-        retry_after = self.get_retry_after(response)
-        if not retry_after:
-            retry_after = self.backoff_factor * (2 ** (len(self.history) + 1))
+        retryAfter = self.get_retry_after(response)
+        if not retryAfter:
+             retryAfter = self.backoff_factor * (2 ** (len(self.history) + 1))
         
-        print(f"   !!! Rate Limit / Error detected. Retrying in {retry_after:.2f} seconds... !!!")
+        print(f"   !!! Rate Limit / Error detected. Retrying in {retryAfter:.2f} seconds... !!!")
         
-        if retry_after > 0:
-            print(f"   [WARNING] Retry-After request detected. Sleeping for ({retry_after:.2f}s).")
+        if retryAfter > 0:
+            print(f"   [WARNING] Retry-After request detected. Sleeping for ({retryAfter:.2f}s).")
             
-        time.sleep(retry_after)
+        time.sleep(retryAfter)
 
-# Rate Limit for Spotify. CAREFUL LIMIT: 1 request per 60 seconds
-spotify_bucket = LeakyBucket(max_requests=1, time_window_seconds=60.0, bucket_id="spotify_global")
-
-# Rate Limit for Last.fm. 4 requests per second
-lastfm_bucket = LeakyBucket(max_requests=5, time_window_seconds=1.0, bucket_id="lastfm_global")
+spotifyBucket = LeakyBucket(maxRequests=1, timeWindowSeconds=10.0, bucketId="spotifyGlobal")
+lastfmBucket = LeakyBucket(maxRequests=5, timeWindowSeconds=1.0, bucketId="lastfmGlobal")
 
 class RateLimitedSession(requests.Session):
     """
     A requests.Session subclass that enforces a LeakyBucket rate limit.
+    This hooks the bucket acquisition directly into the `request` method to catch all standard HTTP calls.
     """
     def __init__(self, bucket=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -228,25 +212,21 @@ class RateLimitedSession(requests.Session):
             self.bucket.acquire()
         return super().request(method, url, *args, **kwargs)
 
-def create_resilient_session(bucket, retries=3, backoff_factor=1.0):
+def createResilientSession(bucket, retries=3, backoffFactor=1.0):
     """
-    Create a RateLimitedSession with the RateLimitAdapter mounted.
-    
-    Args:
-        bucket (LeakyBucket): The rate limiter bucket to use. (Mandatory)
+    Creates a RateLimitedSession with the RateLimitAdapter mounted.
+    This allows us to handle both pro-active rate limiting (bucket) and reactive retries (adapter) in one session.
     """
-    # Create session with the specific bucket
     session = RateLimitedSession(bucket=bucket)
     
-    # Use custom PrintingRetry for visibility
-    retry_strategy = PrintingRetry(
+    retryStrategy = PrintingRetry(
         total=retries,
-        backoff_factor=backoff_factor,
-        status_forcelist=[429, 500, 502, 503, 504], # Added 429 here to let urllib3 handle it natively too
+        backoff_factor=backoffFactor,
+        status_forcelist=[429, 500, 502, 503, 504], 
         allowed_methods=["HEAD", "GET", "PUT", "DELETE", "OPTIONS", "TRACE", "POST"]
     )
     
-    adapter = RateLimitAdapter(max_retries=retry_strategy, bucket=bucket)
+    adapter = RateLimitAdapter(max_retries=retryStrategy, bucket=bucket)
     session.mount("https://", adapter)
     session.mount("http://", adapter)
     

@@ -1,53 +1,49 @@
 """
 Logic for categorisation of tracks based on genre mapping.
+This ensures tracks are correctly assigned to logical buckets, allowing 
+the system to group disparate Last.fm tags into unified Spotify playlists.
 """
 import config
 
-def categorise_tracks(tracks, track_tags_map):
+def categoriseTracks(tracks):
     """
-    Sort a list of tracks into buckets based on config.GENRE_MAPPING.
+    Sorts a list of tracks into buckets based on config.GENRE_MAPPING.
+    This provides the core logic to map raw metadata into actionable groupings.
 
     Args:
-        tracks: List of dicts, each must have 'name', 'id', 'uri', etc.
-        track_tags_map: Dict mapping track_uri -> list of genre strings [Last.fm].
+        tracks: List of dicts, each representing a track from the database.
+                Must have 'trackUri' and 'lastfmTags'.
 
     Returns:
-        Dict: { 'Bucket Name': [track_object, ...], ... }
+        Dict: { 'trackUri': ['Bucket Name', ...], ... }
     """
-    # Initialise buckets
-    sorted_playlists = {bucket: [] for bucket in config.GENRE_MAPPING.keys()}
-    sorted_playlists[config.UNSORTED_PLAYLIST_NAME] = []
+    trackBucketsMap = {}
     
     for track in tracks:
-        track_uri = track.get('uri')
+        trackUri = track['trackUri']
+        # Ensures comparison ignores case and whitespace for reliable mapping.
+        currentGenres = [g.lower().strip() for g in track.get('lastfmTags', [])]
         
-        # Get tags from map (already populated with Track > Artist fallback)
-        current_genres = track_tags_map.get(track_uri, [])
-                
-        # Flatten into a single string for easy substring matching
-        # e.g. "rock classic rock pop"
-        flat_genre_string = " ".join(current_genres).lower()
-        
-        matched_any = False
+        hasMatchedAny = False
+        assignedBuckets = []
 
-        for bucket_name, keywords in config.GENRE_MAPPING.items():
-            # Check if any keyword for this bucket matches the track's genres
-            match_found = False
+        for bucketName, keywords in config.GENRE_MAPPING.items():
+            hasMatch = False
             for keyword in keywords:
-                if keyword in flat_genre_string:
-                    match_found = True
+                # Seek a direct match within the specific tag list to avoid fuzzy overlaps.
+                if keyword.lower().strip() in currentGenres:
+                    hasMatch = True
                     break
             
-            if match_found:
-                sorted_playlists[bucket_name].append(track)
-                matched_any = True
-                
-                # If STOP_AFTER_FIRST_MATCH is True, we stop after the first bucket match
-                if config.STOP_AFTER_FIRST_MATCH:
+            if hasMatch:
+                assignedBuckets.append(bucketName)
+                hasMatchedAny = True
+                if config.SHOULD_STOP_AFTER_FIRST_MATCH:
                     break
         
-        # If no buckets matched at all, add to Fallback
-        if not matched_any:
-            sorted_playlists[config.UNSORTED_PLAYLIST_NAME].append(track)
+        if not hasMatchedAny:
+            assignedBuckets.append(config.UNSORTED_PLAYLIST_NAME)
             
-    return sorted_playlists
+        trackBucketsMap[trackUri] = assignedBuckets
+            
+    return trackBucketsMap

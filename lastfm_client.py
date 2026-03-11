@@ -1,5 +1,7 @@
 """
 Last.fm API client for fetching artist and track tags (genres).
+This enriches the base track data with community-driven tags, allowing for 
+more robust categorisation than Spotify's internal, opaque genre lists.
 """
 import rate_limiter
 import config
@@ -7,153 +9,143 @@ import urllib.parse
 import app_state as state
 
 class LastFMClient:
+    """
+    Client for interacting with the Last.fm API to fetch artist and track metadata.
+    """
     def __init__(self):
-        self.api_key = config.LASTFM_API_KEY
-        if not self.api_key:
+        self.apiKey = config.LASTFM_API_KEY
+        if not self.apiKey:
             raise ValueError("LASTFM_API_KEY not found in config. Please add it to your .env file.")
-        self.base_url = "http://ws.audioscrobbler.com/2.0/"
+        self.baseUrl = "http://ws.audioscrobbler.com/2.0/"
         
         # Use dedicated rate limiter for Last.fm (4 req/sec) with retry logic
-        self.session = rate_limiter.create_resilient_session(bucket=rate_limiter.lastfm_bucket)
+        self.session = rate_limiter.createResilientSession(bucket=rate_limiter.lastfmBucket)
 
-    def fetch_artist_tags(self, artist_name):
+    def fetchArtistTags(self, artistName):
         """
-        Fetch the top tags (genres) for a given artist using Last.fm API.
+        Fetches the top tags (genres) for a given artist using Last.fm API.
+        This provides a fallback set of genres when track-specific tags are unavailable.
 
         Returns:
             list: A list of tag names (strings).
         """
         try:
-            # URL Encoded artist name
-            encoded_artist = urllib.parse.quote(artist_name)
+            encodedArtist = urllib.parse.quote(artistName)
             
-            url = f"{self.base_url}?method=artist.gettoptags&artist={encoded_artist}&api_key={self.api_key}&format=json"
+            url = f"{self.baseUrl}?method=artist.gettoptags&artist={encodedArtist}&api_key={self.apiKey}&format=json"
             
-            # Use resilient session (Bucket handles rate limit, Adapter handles retries)
             response = self.session.get(url, timeout=10)
             
-            # Check for HTTP errors
             if response.status_code != 200:
-                print(f"   Last.fm Error ({response.status_code}) for '{artist_name}'")
+                print(f"   Last.fm Error ({response.status_code}) for '{artistName}'")
                 return []
                 
             data = response.json()
             
-            # Parse response
-            # Structure: { "toptags": { "tag": [ { "name": "rock", ... }, ... ] } }
             tags = []
             if 'toptags' in data and 'tag' in data['toptags']:
-                tag_list = data['toptags']['tag']
-                # Ensure it's a list (single tag might be a dict)
-                if isinstance(tag_list, dict):
-                    tag_list = [tag_list]
+                tagList = data['toptags']['tag']
+                if isinstance(tagList, dict):
+                    tagList = [tagList]
                     
-                # Get top 3 artist tags
-                for tag in tag_list[:3]:
+                for tag in tagList[:3]:
                     if 'name' in tag:
                         tags.append(tag['name'])
             
             return tags
 
         except Exception as e:
-            print(f"   Last.fm Exception for '{artist_name}': {e}")
+            print(f"   Last.fm Exception for '{artistName}': {e}")
             return []
 
-    def fetch_track_tags(self, artist_name, track_name):
+    def fetchTrackTags(self, artistName, trackName):
         """
-        Fetch top tags for a specific track.
+        Fetches top tags for a specific track.
+        This yields the most precise categorisation based on community listening habits.
 
         Returns:
             list: A list of tags.
         """
         try:
-            encoded_artist = urllib.parse.quote(artist_name)
-            encoded_track = urllib.parse.quote(track_name)
+            encodedArtist = urllib.parse.quote(artistName)
+            encodedTrack = urllib.parse.quote(trackName)
             
-            url = f"{self.base_url}?method=track.gettoptags&artist={encoded_artist}&track={encoded_track}&api_key={self.api_key}&format=json"
+            url = f"{self.baseUrl}?method=track.gettoptags&artist={encodedArtist}&track={encodedTrack}&api_key={self.apiKey}&format=json"
             
             response = self.session.get(url, timeout=10)
             
             if response.status_code != 200:
-                # 404/error is common for obscure tracks
                 return []
                 
             data = response.json()
             tags = []
             if 'toptags' in data and 'tag' in data['toptags']:
-                tag_list = data['toptags']['tag']
-                if isinstance(tag_list, dict):
-                    tag_list = [tag_list]
-                for tag in tag_list[:3]: # Take top 3 for track specificity
+                tagList = data['toptags']['tag']
+                if isinstance(tagList, dict):
+                    tagList = [tagList]
+                for tag in tagList[:3]:
                     if 'name' in tag:
                         tags.append(tag['name'])
             return tags
             
-
         except Exception as e:
-            # Silent fail for tracks -> fallback to artist
             return []
 
-def enrich_tracks(songs):
+def enrichTracks(songs):
     """
-    Fetch genres from Last.fm for a list of songs.
-    
-    Optimises API usage by:
-    1. Sorting songs by artist.
-    2. Fetching artist tags only once per artist (batching).
+    Fetches genres from Last.fm for a list of songs.
+    This optimises API usage by caching artist tags locally and applying them 
+    when individual track lookups fail, significantly reducing network calls.
     
     Returns:
         dict: A map of {song_uri: [tags]}
     """
-    track_tags_map = {}
+    trackTagsMap = {}
     
     if not songs:
-        return track_tags_map
+        return trackTagsMap
         
     try:
         lastfm = LastFMClient()
-        total_songs = len(songs)
+        totalSongs = len(songs)
         
         # Sort songs by artist to allow grouping
         songs.sort(key=lambda s: s['artists'][0]['name'] if s['artists'] else "Unknown")
         
-        # Use flat loop for progress tracking, but manage artist state manually
-        current_artist_name = None
-        current_artist_tags = []
-        current_artist_source = None # For logging
+        currentArtistName = None
+        currentArtistTags = []
+        currentArtistSource = None 
         
         for i, song in enumerate(songs):
-            song_name = song['name']
-            primary_artist = song['artists'][0]['name'] if song['artists'] else "Unknown"
+            songName = song['trackName']
+            primaryArtist = song['artists'][0]['name'] if song['artists'] else "Unknown"
             
-            # Check if we switched artists
-            if primary_artist != current_artist_name:
-                current_artist_name = primary_artist
-                # Fetch artist tags ONCE for this new group
-                cached = state.get_artist_tags(primary_artist)
+            if primaryArtist != currentArtistName:
+                currentArtistName = primaryArtist
+                cached = state.getArtistTags(primaryArtist)
                 if cached is not None:
-                     current_artist_tags = cached
-                     current_artist_source = "Artist (DB Cache)"
+                     currentArtistTags = cached
+                     currentArtistSource = "Artist (DB Cache)"
                 else:
-                    current_artist_tags = lastfm.fetch_artist_tags(primary_artist)
-                    state.save_artist_tags(primary_artist, current_artist_tags)
-                    current_artist_source = "Artist (API)"
+                    currentArtistTags = lastfm.fetchArtistTags(primaryArtist)
+                    state.saveArtistTags(primaryArtist, currentArtistTags)
+                    currentArtistSource = "Artist (API)"
             else:
-                current_artist_source = "Artist (Memory)"
+                currentArtistSource = "Artist (Memory)"
 
             # 1. Try Track Tags
-            tags = lastfm.fetch_track_tags(primary_artist, song_name)
+            tags = lastfm.fetchTrackTags(primaryArtist, songName)
             source = "Track"
             
             # 2. Fallback to stored Artist Tags
             if not tags:
-                tags = current_artist_tags
-                source = current_artist_source
+                tags = currentArtistTags
+                source = currentArtistSource
             
-            track_tags_map[song['uri']] = tags
-            print(f"[{i+1}/{total_songs}] {song_name} ({primary_artist}) -> {source}: {tags[:3]}...", end='\\r')
+            trackTagsMap[song['trackUri']] = tags
+            print(f"[{i+1}/{totalSongs}] {songName} ({primaryArtist}) -> {source}: {tags[:3]}...", end='\r')
             
     except Exception as e:
-        print(f"\\nLast.fm Error: {e}")
+        print(f"\nLast.fm Error: {e}")
         
-    return track_tags_map
+    return trackTagsMap
