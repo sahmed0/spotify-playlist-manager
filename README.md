@@ -1,6 +1,6 @@
 # Spotify Liked Songs Sorter
 
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+![Copyright](https://img.shields.io/badge/Copyright-2026_Sajid_Ahmed-limegreen.svg)
 
 A robust, enterprise-grade automation tool designed to organise your Spotify "Liked Songs" into genre-specific playlists. Engineered for high reliability, it navigates the complexities of the 2026 Spotify API landscape using intelligent synchronisation, strict rate limiting, and persistent state management.
 
@@ -123,11 +123,15 @@ This repository includes a GitHub Actions workflow (`.github/workflows/daily_syn
 ---
 
 ## License
+![Copyright](https://img.shields.io/badge/Copyright-2026_Sajid_Ahmed-limegreen.svg)
 
-Copyright © 2026 Sajid Ahmed
+Copyright (c) 2026 Sajid Ahmed. **All Rights Reserved.**
 
-This program is free software: you can redistribute it and/or modify it under the terms of the **GNU General Public License** as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+This repository is a **Proprietary Portfolio Project**.
 
-This program is distributed in the hope that it will be useful, but **WITHOUT ANY WARRANTY**; without even the implied warranty of **MERCHANTABILITY** or **FITNESS FOR A PARTICULAR PURPOSE**. 
+While I am a strong supporter of Open Source Software, this specific codebase represents a significant personal investment of time and effort and is therefore provided for **recruitment evaluation only**.
 
-See the [LICENSE](LICENSE) file for more details.
+* **Permitted:** Viewing, forking (within GitHub only), and local execution for review.
+* **Prohibited:** Modification, redistribution, commercial use, and AI/LLM training.
+
+For the full legal terms, please see the [LICENSE](./LICENSE) file.
