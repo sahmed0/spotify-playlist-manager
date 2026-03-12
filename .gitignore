@@ -14,7 +14,7 @@ __pycache__/
 # Testing cache
 .pytest_cache/
 
-# Spotify/Spotipy Cache (Contains tokens!)
+# Spotify/Spotipy Cache (Contains sensitive tokens!)
 .cache
 
 # Logs and Temporary Output

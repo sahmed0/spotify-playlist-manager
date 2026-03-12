@@ -30,8 +30,9 @@ def categoriseTracks(tracks):
         for bucketName, keywords in config.GENRE_MAPPING.items():
             hasMatch = False
             for keyword in keywords:
-                # Seek a direct match within the specific tag list to avoid fuzzy overlaps.
-                if keyword.lower().strip() in currentGenres:
+                keywordLower = keyword.lower().strip()
+                # Use substring matching to catch variations like 'deep house music' for 'house'.
+                if any(keywordLower in tag for tag in currentGenres):
                     hasMatch = True
                     break
             
@@ -42,7 +43,7 @@ def categoriseTracks(tracks):
                     break
         
         if not hasMatchedAny:
-            assignedBuckets.append(config.UNSORTED_PLAYLIST_NAME)
+            assignedBuckets.append(config.UNDEFINED_TAG)
             
         trackBucketsMap[trackUri] = assignedBuckets
             

@@ -237,18 +237,20 @@ class SpotifyClient:
             "description": f"Auto-generated {name} playlist"
         }
         
-        playlistId = None
+        playlistData = None
         try:
              print(f"   Requesting creation of playlist '{name}' on Spotify...")
-             playlistId = self._post("me/playlists", payload=payload)
+             playlistData = self._post("me/playlists", payload=payload)
              
         except Exception as e:
              raise SpotifyAPIError(f"Failed to create playlist '{name}': {e}") from e
              
-        if playlistId:
+        if playlistData and 'id' in playlistData:
+            playlistId = playlistData['id']
             state.cachePlaylist(name, playlistId)
+            return playlistId
                 
-        return playlistId
+        raise SpotifyAPIError(f"Failed to create playlist '{name}': No ID in response.")
 
     @retryOnTokenFailure
     def refreshPlaylistCache(self, force=False):

@@ -53,7 +53,7 @@ class LastFMClient:
                 if isinstance(tagList, dict):
                     tagList = [tagList]
                     
-                for tag in tagList[:5]:
+                for tag in tagList[:10]:
                     if 'name' in tag:
                         tags.append(tag['name'])
             
@@ -88,7 +88,7 @@ class LastFMClient:
                 tagList = data['toptags']['tag']
                 if isinstance(tagList, dict):
                     tagList = [tagList]
-                for tag in tagList[:5]:
+                for tag in tagList[:10]:
                     if 'name' in tag:
                         tags.append(tag['name'])
             return tags

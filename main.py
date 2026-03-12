@@ -99,8 +99,6 @@ def op6CreateMissingPlaylists():
     print("\n--- Operation 6: Create Missing Playlists ---")
     
     expectedPlaylists = list(config.GENRE_MAPPING.keys())
-    if config.UNSORTED_PLAYLIST_NAME not in expectedPlaylists:
-        expectedPlaylists.append(config.UNSORTED_PLAYLIST_NAME)
         
     cachedPlaylists = state.getAllCachedPlaylists()
     

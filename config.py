@@ -15,11 +15,10 @@ REFRESH_TOKEN = os.getenv("SPOTIPY_REFRESH_TOKEN")
 LASTFM_API_KEY = os.getenv("LASTFM_API_KEY")
 
 APP_NAME = "liked songs manager"
-APP_VERSION = "2.0.1"
+APP_VERSION = "2.0.2"
 
 SCOPE = "user-library-read playlist-modify-private playlist-modify-public playlist-read-private"
 
-# IF A SONG CANNOT BE CATEGORISED, WHY SHOULD WE ADD IT TO A PLAYLIST AT ALL? WASTE OF TIME AND API CALLS, AS THE SONG IS ALREADY IN THE 'LIKED SONGS' PLAYLIST.
 SHOULD_STOP_AFTER_FIRST_MATCH = False
 
 GENRE_MAPPING = {
@@ -35,7 +34,7 @@ GENRE_MAPPING = {
         'tropical house', 'chicago house', 'future house', 'bass house', 'french house'
     ],
     'Drum and Bass': ['drum and bass', 'dnb', 'liquid funk', 'neurofunk', 'jump up'],
-    'Jungle': ['jungle', 'ragga jungle', 'darkside'],
+        'Jungle': ['jungle', 'ragga jungle', 'darkside'],
     'Garage': ['garage', 'uk garage', 'speed garage', '2-step', 'future garage', 'bassline'],
     'Synthpop': ['synthpop', 'synth-pop', 'electropop', 'futurepop', 'dark wave'],
     'Hyperpop': ['hyperpop', 'glitchcore', 'digicore', 'pc music', 'bubblegum bass'],
@@ -148,7 +147,7 @@ GENRE_MAPPING = {
     'Pakistani Music': ['pakistani', 'pakistani pop', 'urdu', 'lollywood', 'pakistani rock', 'urdu pop'],
 }
 
-UNSORTED_PLAYLIST_NAME = "Unsorted"
+UNDEFINED_TAG = "Undefined"
 
 IS_DRY_RUN = False
 
