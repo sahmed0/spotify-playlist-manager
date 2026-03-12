@@ -138,16 +138,22 @@ def enrichTracks(songs):
             else:
                 currentArtistSource = "Artist (Memory)"
 
-            # 1. Try Track Tags
-            tags = lastfm.fetchTrackTags(primaryArtist, songName)
-            source = "Track"
-            
-            # 2. Fallback to stored Artist Tags
-            if not tags:
-                tags = currentArtistTags
-                source = currentArtistSource
+            # 1. Try Track Tags (Check Cache First)
+            tags = state.getTrackTags(song['trackUri'])
+            if tags is not None:
+                source = "Track (DB Cache)"
+            else:
+                tags = lastfm.fetchTrackTags(primaryArtist, songName)
+                if tags:
+                    state.saveTrackTags(song['trackUri'], tags)
+                    source = "Track (API)"
+                else:
+                    # 2. Fallback to stored Artist Tags
+                    tags = currentArtistTags
+                    source = currentArtistSource
             
             trackTagsMap[song['trackUri']] = tags
+            state.updateTrackTags(song['trackUri'], tags)
             print(f"[{i+1}/{totalSongs}] {songName} ({primaryArtist}) -> {source}: {tags[:5]}...", end='\r')
             
     except Exception as e:

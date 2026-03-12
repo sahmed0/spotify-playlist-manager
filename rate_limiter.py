@@ -179,8 +179,10 @@ class RateLimitedSession(requests.Session):
         self.bucket = bucket
 
     def request(self, method, url, *args, **kwargs):
-        if self.bucket:
-            self.bucket.acquire()
+        """
+        Standard request override.
+        Rate limiting is handled by the RateLimitAdapter to prevent double-acquisition.
+        """
         return super().request(method, url, *args, **kwargs)
 
 def createResilientSession(bucket, retries=3, backoffFactor=1.0):
@@ -188,7 +190,7 @@ def createResilientSession(bucket, retries=3, backoffFactor=1.0):
     Creates a RateLimitedSession with the RateLimitAdapter mounted.
     This allows us to handle both pro-active rate limiting (bucket) and reactive retries (adapter) in one session.
     """
-    session = RateLimitedSession(bucket=bucket)
+    session = RateLimitedSession(bucket=None)
     
     retryStrategy = PrintingRetry(
         total=retries,

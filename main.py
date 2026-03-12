@@ -29,20 +29,20 @@ def op2FetchLikedSongs():
         
     if startOffset > 0:
          print(f"Resuming from previous offset: {startOffset}")
+    
+    cutoffDate = state.getLatestTrackTimestamp()
+    if cutoffDate:
+        print(f"Using incremental sync (cutoff: {cutoffDate})")
          
     results, newOffset, isFullySynced = client.fetchCurrentUserSavedTracks(
         maxTracks=maxTracks, 
-        startOffset=startOffset
+        startOffset=startOffset,
+        cutoffDate=cutoffDate
     )
-    
-    if results:
-        state.saveLikedSongs(results)
-        print(f"Saved {len(results)} tracks to database.")
-        
-    state.setMemoryVal("likedSongsOffset", newOffset)
     
     if isFullySynced:
         print("Finished syncing all liked songs.")
+        state.setMemoryVal("likedSongsOffset", 0) # Reset offset for next full sync
 
 def op3FetchLastfmTags():
     """Operation 3: Retrieves genre tags from Last.fm for tracks missing metadata in the database."""
@@ -56,33 +56,51 @@ def op3FetchLastfmTags():
         
     print(f"Fetching tags for {len(tracks)} tracks...")
     
-    tagsMap = lastfm_client.enrichTracks(tracks)
+    lastfm_client.enrichTracks(tracks)
     
-    print("\nSaving tags to database...")
-    savedCount = 0
-    for trackUri, tags in tagsMap.items():
-        state.updateTrackTags(trackUri, tags)
-        savedCount += 1
-        
-    print(f"Finished fetching Last.fm tags for {savedCount} tracks.")
+    print(f"\nFinished fetching Last.fm tags for {len(tracks)} tracks.")
 
 def op4SortSongs():
     """Operation 4: Classifies unclassified tracks into genre buckets based on their Last.fm tags."""
     print("\n--- Operation 4: Sort Songs ---")
     
-    tracks = state.getUnclassifiedTracks()
-    if not tracks:
-        print("No unclassified tracks found or all tracks are already ranked.")
+    unclassifiedCount = state.countUnclassifiedTracks()
+    if unclassifiedCount == 0:
+        print("No new unclassified tracks found.")
         return
-        
-    print(f"Sorting {len(tracks)} tracks into buckets...")
+
+    print(f"Categorising {unclassifiedCount} tracks based on Last.fm tags...")
     
-    trackBucketsMap = sorter.categoriseTracks(tracks)
+    batchSize = 500
+    totalProcessed = 0
+    # Safety mechanism to prevent infinite loops if DB updates fail
+    maxBatches = (unclassifiedCount // batchSize) + 10
+    batchCount = 0
     
-    for trackUri, buckets in trackBucketsMap.items():
-        state.updateTrackSorting(trackUri, buckets)
+    while batchCount < maxBatches:
+        tracks = state.getUnclassifiedTracks(limit=batchSize, offset=0)
+        if not tracks:
+            break
+            
+        print(f" Processing batch of {len(tracks)} tracks ({totalProcessed}/{unclassifiedCount})...")
+        results = sorter.categoriseTracks(tracks)
         
-    print(f"Finished sorting {len(trackBucketsMap)} tracks.")
+        if not results:
+             print("   Warning: Batch processing returned no results. Breaking to avoid loop.")
+             break
+
+        for trackUri, buckets in results.items():
+            state.updateTrackSorting(trackUri, buckets)
+            totalProcessed += 1
+            
+        batchCount += 1
+        if len(tracks) < batchSize:
+            break
+            
+    if totalProcessed == 0:
+        print("No tracks were processed.")
+    else:
+        print(f"Finished. Categorised {totalProcessed} tracks.")
 
 def op5FetchUserPlaylists():
     """Operation 5: Synchronises the local cache of the user's Spotify playlists."""

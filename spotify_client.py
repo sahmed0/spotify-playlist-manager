@@ -163,6 +163,7 @@ class SpotifyClient:
                 print(f"   Requesting liked songs batch (offset {offset})...") 
                 response = self._get("me/tracks", params={"limit": limit, "offset": offset})
                 items = response['items']
+                batchResults = []
                 
                 if not items:
                     isFullySynced = True 
@@ -188,12 +189,18 @@ class SpotifyClient:
                         'artists': [{'id': a['id'], 'name': a['name']} for a in track['artists']]
                     }
                     results.append(simpleTrack)
+                    batchResults.append(simpleTrack)
                     
                     if maxTracks and len(results) >= maxTracks:
                         shouldStopFetching = True
                         break
                 
                 offset += len(items) 
+                
+                # Save the songs fetched in this batch and update the offset
+                if batchResults:
+                    state.saveLikedSongs(batchResults)
+                    state.setMemoryVal("likedSongsOffset", offset)
                 
                 if shouldStopFetching:
                     break
@@ -268,10 +275,9 @@ class SpotifyClient:
                 print(f"   Loaded {len(dbCache)} playlists from local database.")
                 return
 
-        allPlaylists = []
-        limit = 50 
+        seenIds = set()
         offset = 0
-
+        limit = 50
         userId = self.getCurrentUserId()
         
         while True:
@@ -279,17 +285,22 @@ class SpotifyClient:
 
             response = self._get("me/playlists", params={"limit": limit, "offset": offset})
             playlists = response['items']
+            batchToCache = []
 
             for playlist in playlists:
                 if playlist['owner']['id'] == userId:
-                    allPlaylists.append(playlist)
+                    batchToCache.append(playlist)
+                    seenIds.add(playlist['id'])
                 
+            if batchToCache:
+                state.bulkCachePlaylists(batchToCache)
+
             if not response['next']:
                 break
             offset += limit
             
-        print(f"\n   Cache built. Found {len(allPlaylists)} playlists. Saving to DB...")
-        state.bulkCachePlaylists(allPlaylists)
+        print(f"\n   Incremental cache updated ({len(seenIds)} playlists processed). Cleaning up orphans...")
+        state.cleanupOrphanedPlaylists(seenIds)
 
     @retryOnTokenFailure
     def getOrCreatePlaylist(self, name):
@@ -320,11 +331,19 @@ class SpotifyClient:
              return set()
 
         try:
-            response = self._get(f"playlists/{playlistId}", params={"fields": "snapshot_id"})
-            currentSnapshot = response['snapshot_id']
-            
-            storedSnapshot = state.getStoredSnapshotId(playlistId)
+            # Efficiency optimization: Use the snapshot ID obtained during the last playlist refresh if available
+            currentSnapshot = state.getPlaylistSnapshotId(playlistId)
+            storedSnapshot = state.getLastSyncSnapshotId(playlistId)
                     
+            if currentSnapshot and currentSnapshot == storedSnapshot:
+                print(f"Incremental Match: Snapshot matches cache for {playlistId} ({currentSnapshot[:8]}...). Loading from DB.")
+                return state.getSnapshotTracks(playlistId)
+
+            # If not in cache or mismatch, fetch current snapshot from Spotify
+            if not currentSnapshot:
+                response = self._get(f"playlists/{playlistId}", params={"fields": "snapshot_id"})
+                currentSnapshot = response['snapshot_id']
+                
             if currentSnapshot == storedSnapshot:
                 print(f"Snapshot match for {playlistId} ({currentSnapshot[:8]}...). Loading from DB.")
                 return state.getSnapshotTracks(playlistId)
@@ -335,16 +354,25 @@ class SpotifyClient:
             
             print(f"Snapshot changed or new. Fetching tracks for {playlistId}...")
             
+            if not self.isDryRun:
+                state.clearSnapshot(playlistId)
+
             while True:
                 print(f"   Requesting playlist items for {playlistId} (offset {offset})...")
                 # "fields": "items(track(uri)),next" means to only GET track URIs and the URL of the next page of playlist items so can continue fetching until no more items
                 response = self._get(f"playlists/{playlistId}/items", params={"fields": "items(track(uri)),next", "limit": limit, "offset": offset})
                 items = response['items']
                 
+                batchUris = []
                 for item in items:
                     if item and item.get('track'):
-                        existingUris.add(item['track']['uri'])
+                        uri = item['track']['uri']
+                        existingUris.add(uri)
+                        batchUris.append(uri)
                 
+                if batchUris and not self.isDryRun:
+                    state.addToSnapshotBatch(playlistId, batchUris)
+
                 if offset > 0:
                      print(f"   Fetching playlist tracks... ({len(existingUris)} found)", end='\r')
 
@@ -353,8 +381,7 @@ class SpotifyClient:
                 offset += limit
                 
             if not self.isDryRun:
-                state.updateSnapshotId(playlistId, currentSnapshot)
-                state.replaceSnapshotTracks(playlistId, existingUris)
+                state.updateLastSyncSnapshotId(playlistId, currentSnapshot)
                 
             return existingUris
 
@@ -423,10 +450,11 @@ class SpotifyClient:
                 
                 if not self.isDryRun:
                     if 'snapshot_id' in response:
-                        state.updateSnapshotId(playlistId, response['snapshot_id'])
-                    currentSnapshotTracks = state.getSnapshotTracks(playlistId)
-                    currentSnapshotTracks.update(batch)
-                    state.replaceSnapshotTracks(playlistId, currentSnapshotTracks)
+                        newSnapshot = response['snapshot_id']
+                        state.updateLastSyncSnapshotId(playlistId, newSnapshot)
+                        state.updatePlaylistSnapshotId(playlistId, newSnapshot)
+                    # Optimized: Directly add only the tracks from the successful batch to the local snapshot DB
+                    state.addToSnapshotBatch(playlistId, batch)
                 
                 if onBatchSuccess:
                     try:

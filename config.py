@@ -15,7 +15,7 @@ REFRESH_TOKEN = os.getenv("SPOTIPY_REFRESH_TOKEN")
 LASTFM_API_KEY = os.getenv("LASTFM_API_KEY")
 
 APP_NAME = "liked songs manager"
-APP_VERSION = "2.0.2"
+APP_VERSION = "2.1.0"
 
 SCOPE = "user-library-read playlist-modify-private playlist-modify-public playlist-read-private"
 

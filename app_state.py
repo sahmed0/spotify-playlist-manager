@@ -46,7 +46,8 @@ def initDb():
         conn.execute('''
             CREATE TABLE IF NOT EXISTS usersPlaylists (
                 playlistId TEXT PRIMARY KEY,
-                name TEXT
+                name TEXT,
+                snapshotId TEXT
             )
         ''')
         
@@ -61,6 +62,13 @@ def initDb():
         conn.execute('''
             CREATE TABLE IF NOT EXISTS artistTagsCache (
                 artistName TEXT PRIMARY KEY,
+                tags TEXT
+            )
+        ''')
+        
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS trackTagsCache (
+                trackUri TEXT PRIMARY KEY,
                 tags TEXT
             )
         ''')
@@ -149,6 +157,12 @@ def saveLikedSongs(tracks):
             ))
         conn.commit()
 
+def getLatestTrackTimestamp():
+    """Retrieves the addedAt timestamp of the most recently synced track."""
+    with getDbConnection() as conn:
+        row = conn.execute("SELECT MAX(addedAt) as maxAddedAt FROM likedSongs").fetchone()
+        return row['maxAddedAt'] if row else None
+
 def getTracksMissingTags(limit=None):
     """Returns a list of tracks that lack lastfmTags."""
     with getDbConnection() as conn:
@@ -173,10 +187,25 @@ def updateTrackTags(trackUri, tags):
         )
         conn.commit()
 
-def getUnclassifiedTracks():
-    """Returns a list of tracks that have tags but haven't been assigned to playlists."""
+def countUnclassifiedTracks():
+    """Returns the total number of tracks that have tags but are not yet sorted."""
     with getDbConnection() as conn:
-        rows = conn.execute("SELECT * FROM likedSongs WHERE lastfmTags IS NOT NULL AND sortedPlaylists IS NULL").fetchall()
+        row = conn.execute("SELECT COUNT(*) as count FROM likedSongs WHERE lastfmTags IS NOT NULL AND sortedPlaylists IS NULL AND isInvalid = 0").fetchone()
+        return row['count'] if row else 0
+
+def getUnclassifiedTracks(limit=None, offset=0):
+    """
+    Retrieves tracks that have Last.fm tags but have not yet been assigned to any buckets.
+    Supports chunked retrieval via limit and offset.
+    """
+    query = "SELECT * FROM likedSongs WHERE lastfmTags IS NOT NULL AND sortedPlaylists IS NULL AND isInvalid = 0"
+    params = []
+    if limit is not None:
+        query += " LIMIT ? OFFSET ?"
+        params = [limit, offset]
+        
+    with getDbConnection() as conn:
+        rows = conn.execute(query, params).fetchall()
         
         tracks = []
         for row in rows:
@@ -212,19 +241,44 @@ def saveArtistTags(artistName, tags):
         )
         conn.commit()
 
+def getTrackTags(trackUri):
+    """Retrieves cached Last.fm tags for a specific track."""
+    with getDbConnection() as conn:
+        row = conn.execute("SELECT tags FROM trackTagsCache WHERE trackUri = ?", (trackUri,)).fetchone()
+        if row and row['tags']:
+            return json.loads(row['tags'])
+        return None
+
+def saveTrackTags(trackUri, tags):
+    """Saves Last.fm tags for a specific track to avoid redundant API lookups."""
+    with getDbConnection() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO trackTagsCache (trackUri, tags) VALUES (?, ?)",
+            (trackUri, json.dumps(tags))
+        )
+        conn.commit()
+
 def bulkCachePlaylists(playlists):
-    """Saves a list of playlist dictionaries to the usersPlaylists table."""
+    """Saves a list of playlist dictionaries to the usersPlaylists table incrementally."""
     if not playlists:
         return
         
     with getDbConnection() as conn:
-        conn.execute("DELETE FROM usersPlaylists")
-        
         for pl in playlists:
             conn.execute(
-                "INSERT INTO usersPlaylists (playlistId, name) VALUES (?, ?)",
-                (pl['id'], pl['name'])
+                "INSERT OR REPLACE INTO usersPlaylists (playlistId, name, snapshotId) VALUES (?, ?, ?)",
+                (pl['id'], pl['name'], pl.get('snapshot_id'))
             )
+        conn.commit()
+
+def cleanupOrphanedPlaylists(seenIds):
+    """Removes playlists from the local cache that were not included in the last full sync batch."""
+    if not seenIds:
+        return
+        
+    placeholders = ",".join(["?"] * len(seenIds))
+    with getDbConnection() as conn:
+        conn.execute(f"DELETE FROM usersPlaylists WHERE playlistId NOT IN ({placeholders})", list(seenIds))
         conn.commit()
 
 def getAllCachedPlaylists():
@@ -233,12 +287,12 @@ def getAllCachedPlaylists():
         rows = conn.execute("SELECT name, playlistId FROM usersPlaylists").fetchall()
         return {row['name']: row['playlistId'] for row in rows}
 
-def cachePlaylist(name, playlistId):
+def cachePlaylist(name, playlistId, snapshotId=None):
     """Adds a single playlist to the cache."""
     with getDbConnection() as conn:
         conn.execute(
-            "INSERT OR REPLACE INTO usersPlaylists (playlistId, name) VALUES (?, ?)",
-            (playlistId, name)
+            "INSERT OR REPLACE INTO usersPlaylists (playlistId, name, snapshotId) VALUES (?, ?, ?)",
+            (playlistId, name, snapshotId)
         )
         conn.commit()
 
@@ -249,25 +303,49 @@ def deletePlaylistCache(playlistId):
         conn.execute("DELETE FROM snapshots WHERE playlistId = ?", (playlistId,))
         conn.commit()
 
-def getStoredSnapshotId(playlistId):
-    """Retrieves the stored snapshot ID for a given playlist to determine if polling is needed."""
-    return getMemoryVal(f"snapshotId_{playlistId}")
+def getPlaylistSnapshotId(playlistId):
+    """Retrieves the snapshot ID stored in the playlist cache."""
+    with getDbConnection() as conn:
+        row = conn.execute("SELECT snapshotId FROM usersPlaylists WHERE playlistId = ?", (playlistId,)).fetchone()
+        return row['snapshotId'] if row else None
 
-def updateSnapshotId(playlistId, snapshotId):
-    """Saves the snapshot ID for a given playlist."""
-    setMemoryVal(f"snapshotId_{playlistId}", snapshotId)
+def getLastSyncSnapshotId(playlistId):
+    """Retrieves the snapshot ID corresponding to the tracks currently in our local snapshots table."""
+    return getMemoryVal(f"lastSyncSnapshotId_{playlistId}")
 
-def replaceSnapshotTracks(playlistId, trackUris):
-    """Clears existing snapshot tracks for a playlist and inserts new ones."""
+def updateLastSyncSnapshotId(playlistId, snapshotId):
+    """Saves the snapshot ID corresponding to our last successful sync/snapshot fetch."""
+    setMemoryVal(f"lastSyncSnapshotId_{playlistId}", snapshotId)
+
+def updatePlaylistSnapshotId(playlistId, snapshotId):
+    """Updates the snapshot ID in the persistent playlist cache."""
+    with getDbConnection() as conn:
+        conn.execute("UPDATE usersPlaylists SET snapshotId = ? WHERE playlistId = ?", (snapshotId, playlistId))
+        conn.commit()
+
+def clearSnapshot(playlistId):
+    """Removes all track URIs from the snapshots table for a given playlist."""
     with getDbConnection() as conn:
         conn.execute("DELETE FROM snapshots WHERE playlistId = ?", (playlistId,))
-        
-        if trackUris:
-            conn.executemany(
-                "INSERT INTO snapshots (playlistId, trackUri) VALUES (?, ?)",
-                [(playlistId, uri) for uri in trackUris]
-            )
         conn.commit()
+
+def addToSnapshotBatch(playlistId, trackUris):
+    """Adds a batch of track URIs to the snapshots table for a given playlist."""
+    if not trackUris:
+        return
+        
+    with getDbConnection() as conn:
+        conn.executemany(
+            "INSERT INTO snapshots (playlistId, trackUri) VALUES (?, ?)",
+            [(playlistId, uri) for uri in trackUris]
+        )
+        conn.commit()
+
+def replaceSnapshotTracks(playlistId, trackUris):
+    """Clears existing snapshot tracks for a playlist and inserts new ones. Now uses incremental helpers."""
+    clearSnapshot(playlistId)
+    if trackUris:
+        addToSnapshotBatch(playlistId, trackUris)
 
 def getSnapshotTracks(playlistId):
     """Retrieves all track URIs for a given playlist snapshot as a set."""
@@ -276,20 +354,19 @@ def getSnapshotTracks(playlistId):
         return {row['trackUri'] for row in rows}
 
 def getTracksForPlaylist(playlistName):
-    """Retrieves all track URIs from likedSongs assigned to the specified playlist, excluding invalid URIs."""
+    """
+    Retrieves all track URIs from likedSongs assigned to the specified playlist.
+    Uses SQLite JSON functions to filter directly in the database for maximum efficiency.
+    """
+    query = """
+        SELECT trackUri 
+        FROM likedSongs, json_each(likedSongs.sortedPlaylists) 
+        WHERE (isInvalid IS NULL OR isInvalid = 0) 
+        AND json_each.value = ?
+    """
     with getDbConnection() as conn:
-        rows = conn.execute("SELECT trackUri, sortedPlaylists FROM likedSongs WHERE sortedPlaylists IS NOT NULL AND (isInvalid IS NULL OR isInvalid = 0)").fetchall()
-        
-        assignedUris = []
-        for row in rows:
-            try:
-                playlists = json.loads(row['sortedPlaylists'])
-                if isinstance(playlists, list) and playlistName in playlists:
-                    assignedUris.append(row['trackUri'])
-            except json.JSONDecodeError:
-                pass
-                
-        return assignedUris
+        rows = conn.execute(query, (playlistName,)).fetchall()
+        return [row['trackUri'] for row in rows]
 
 def markTrackInvalid(trackUri):
     """Flags a specific track URI as permanently invalid so it is never re-submitted to Spotify."""
