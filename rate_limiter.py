@@ -62,7 +62,7 @@ class LeakyBucket:
         if waitTime <= 0:
             return
             
-        jitter = waitTime * random.uniform(0.05, 0.5)
+        jitter = waitTime * random.uniform(0.1, 0.5)
         totalWait = waitTime + jitter
         
         if totalWait > logThreshold:
