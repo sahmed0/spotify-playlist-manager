@@ -155,8 +155,8 @@ class SpotifyClient:
         offset = startOffset
         
         print(f"Fetching liked songs starting from offset {offset}...")
-        shouldStopFetching = False
-        isFullySynced = False
+        wasCutoffReached = False
+        isEndOfLibrary = False
         
         while True:
             try:
@@ -166,14 +166,15 @@ class SpotifyClient:
                 batchResults = []
                 
                 if not items:
-                    isFullySynced = True 
+                    isEndOfLibrary = True 
                     break
                 
                 for item in items:
+                    # Incremental sync check: Only stop if we specifically have a cutoffDate.
+                    # This check is now robust because main.py only provides cutoffDate if the tail is complete.
                     if cutoffDate and item['added_at'] <= cutoffDate:
                         print(f"   -> Reached previously sync'd track ({item['added_at']}). Stopping fetch.")
-                        shouldStopFetching = True
-                        isFullySynced = True 
+                        wasCutoffReached = True
                         break
                         
                     track = item['track']
@@ -192,7 +193,6 @@ class SpotifyClient:
                     batchResults.append(simpleTrack)
                     
                     if maxTracks and len(results) >= maxTracks:
-                        shouldStopFetching = True
                         break
                 
                 offset += len(items) 
@@ -202,13 +202,16 @@ class SpotifyClient:
                     state.saveLikedSongs(batchResults)
                     state.setMemoryVal("likedSongsOffset", offset)
                 
-                if shouldStopFetching:
+                if wasCutoffReached:
+                    break
+                
+                if maxTracks and len(results) >= maxTracks:
                     break
                     
                 print(f"Fetched {len(results)} songs... (Final offset: {offset})", end='\r')
 
                 if response['next'] is None:
-                    isFullySynced = True
+                    isEndOfLibrary = True
                     break
                     
             except Exception as e:
@@ -216,7 +219,7 @@ class SpotifyClient:
                 break
                 
         print(f"\nTotal liked songs fetched: {len(results)}")
-        return results, offset, isFullySynced
+        return results, offset, isEndOfLibrary, wasCutoffReached
 
     @retryOnTokenFailure
     def createPlaylistForCurrentUser(self, name):

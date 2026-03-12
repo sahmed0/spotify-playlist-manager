@@ -30,19 +30,31 @@ def op2FetchLikedSongs():
     if startOffset > 0:
          print(f"Resuming from previous offset: {startOffset}")
     
-    cutoffDate = state.getLatestTrackTimestamp()
+    # Only use incremental sync cutoff if we have previously reached the very end of the library.
+    # Otherwise, we might have "gaps" in the older part of the library that need filling.
+    isTailComplete = state.getMemoryVal("libraryTailComplete") == "1"
+    cutoffDate = state.getLatestTrackTimestamp() if isTailComplete else None
+    
     if cutoffDate:
         print(f"Using incremental sync (cutoff: {cutoffDate})")
+    elif isTailComplete:
+        print("Initialising full sync (tail is complete, but no cutoff date found)...")
+    else:
+        print("Using full library fetch (tail is not yet complete)...")
          
-    results, newOffset, isFullySynced = client.fetchCurrentUserSavedTracks(
+    results, newOffset, isEndOfLibrary, wasCutoffReached = client.fetchCurrentUserSavedTracks(
         maxTracks=maxTracks, 
         startOffset=startOffset,
         cutoffDate=cutoffDate
     )
     
-    if isFullySynced:
-        print("Finished syncing all liked songs.")
-        state.setMemoryVal("likedSongsOffset", 0) # Reset offset for next full sync
+    if isEndOfLibrary:
+        print("Reached the end of your Spotify Liked Songs library.")
+        state.setMemoryVal("libraryTailComplete", 1)
+        
+    if isEndOfLibrary or wasCutoffReached:
+        print("Sync session finished.")
+        state.setMemoryVal("likedSongsOffset", 0) # Reset offset for next sync
 
 def op3FetchLastfmTags():
     """Operation 3: Retrieves genre tags from Last.fm for tracks missing metadata in the database."""
