@@ -31,3 +31,7 @@ Thumbs.db
 state.db-shm
 state.db-wal
 test_*.db
+
+# Personal notes
+development_strategy.md
+context.md

@@ -29,6 +29,7 @@ def retryOnTokenFailure(func):
             if e.response is not None and e.response.status_code == 401:
                 print(f"   !!! 401 Unauthorized during {func.__name__}. Force refreshing token...")
                 self._forceRefreshToken()
+                time.sleep(10)
                 print(f"   !!! Retrying {func.__name__}...")
                 return func(self, *args, **kwargs)
             else:
@@ -52,6 +53,7 @@ class SpotifyClient:
     def _get(self, endpoint, params=None):
         """Helper to make GET requests to Spotify API"""
         url = f"https://api.spotify.com/v1/{endpoint}"
+        print(f"   [API] spotify.GET -> {endpoint}")
         headers = {"Authorization": f"Bearer {self.accessToken}"} if self.accessToken else {}
         response = self.session.get(url, headers=headers, params=params)
         response.raise_for_status()
@@ -60,6 +62,7 @@ class SpotifyClient:
     def _post(self, endpoint, payload=None):
         """Helper to make POST requests to Spotify API"""
         url = f"https://api.spotify.com/v1/{endpoint}"
+        print(f"   [API] spotify.POST -> {endpoint}")
         headers = {"Authorization": f"Bearer {self.accessToken}"} if self.accessToken else {}
         response = self.session.post(url, headers=headers, json=payload)
         response.raise_for_status()
@@ -88,8 +91,10 @@ class SpotifyClient:
                 "refresh_token": config.REFRESH_TOKEN
             }
 
+            print("   [API] accounts.spotify.POST -> api/token (refresh_token)")
             response = self.authSession.post("https://accounts.spotify.com/api/token", data=payload, headers=headers)
 
+            # If request succeeded
             if response.status_code == 200:
                 tokenInfo = response.json()
                 
@@ -141,6 +146,7 @@ class SpotifyClient:
             startOffset (int): Offset to start fetching from (for incremental sync).
         """
         results = []
+        # If maxTracks > 50, limit = 50. Otherwise, limit = maxTracks. if maxTracks is None, limit = 50.
         if maxTracks:
             limit = min(50, maxTracks)
         else:
@@ -192,7 +198,7 @@ class SpotifyClient:
                 if shouldStopFetching:
                     break
                     
-                print(f"Fetched {len(results)} songs... (Total offset: {offset})", end='\r')
+                print(f"Fetched {len(results)} songs... (Final offset: {offset})", end='\r')
 
                 if response['next'] is None:
                     isFullySynced = True
@@ -226,13 +232,15 @@ class SpotifyClient:
         
         payload = {
             "name": name,
+            "public": False,
+            "collaborative": False,
             "description": f"Auto-generated {name} playlist"
         }
         
         playlistId = None
         try:
              print(f"   Requesting creation of playlist '{name}' on Spotify...")
-             playlistId = self._post(f"users/{userId}/playlists", payload=payload)['id']
+             playlistId = self._post("me/playlists", payload=payload)
              
         except Exception as e:
              raise SpotifyAPIError(f"Failed to create playlist '{name}': {e}") from e
@@ -268,10 +276,11 @@ class SpotifyClient:
             print(f"   Fetching playlists from Spotify... (offset {offset})")
 
             response = self._get("me/playlists", params={"limit": limit, "offset": offset})
-            
-            for pl in response['items']:
-                if pl['owner']['id'] == userId:
-                    allPlaylists.append(pl)
+            playlists = response['items']
+
+            for playlist in playlists:
+                if playlist['owner']['id'] == userId:
+                    allPlaylists.append(playlist)
                 
             if not response['next']:
                 break
@@ -299,7 +308,7 @@ class SpotifyClient:
         return newId
 
     @retryOnTokenFailure
-    def getPlaylistTracks(self, playlistId):
+    def getPlaylistItems(self, playlistId):
         """
         Fetches all track URIs currently in the playlist.
         This checks the snapshot ID first, completely skipping the heavy API fetch 
@@ -319,13 +328,14 @@ class SpotifyClient:
                 return state.getSnapshotTracks(playlistId)
                 
             existingUris = set()
-            limit = 100 
+            limit = 50
             offset = 0
             
             print(f"Snapshot changed or new. Fetching tracks for {playlistId}...")
             
             while True:
                 print(f"   Requesting playlist items for {playlistId} (offset {offset})...")
+                # "fields": "items(track(uri)),next" means to only GET track URIs and the URL of the next page of playlist items so can continue fetching until no more items
                 response = self._get(f"playlists/{playlistId}/items", params={"fields": "items(track(uri)),next", "limit": limit, "offset": offset})
                 items = response['items']
                 
@@ -372,7 +382,7 @@ class SpotifyClient:
         
         uniqueTrackUris = list(dict.fromkeys(trackUris))
         
-        existingUrisInPlaylist = self.getPlaylistTracks(playlistId)        
+        existingUrisInPlaylist = self.getPlaylistItems(playlistId)        
         if existingUrisInPlaylist is None:
             existingUrisInPlaylist = set()
             

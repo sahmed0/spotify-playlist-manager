@@ -12,19 +12,19 @@ else:
         
         print(f"--- Inspecting {DB_FILE} ---")
         
-        # Check app_state table
-        print("\n[app_state Table]")
+        # Check memory table (primary table)
+        print("\n[Memory Table]")
         try:
-            rows = conn.execute("SELECT * FROM app_state").fetchall()
+            rows = conn.execute("SELECT * FROM memory").fetchall()
             if not rows:
-                print("Table 'app_state' is empty.")
+                print("Table 'memory' is empty.")
             for row in rows:
                 print(f"Key: {row['key']}, Value: {row['value']}")
         except sqlite3.OperationalError as e:
-            print(f"Error querying app_state: {e}")
+            print(f"Error querying memory: {e}")
 
         # Check other tables counts
-        tables = ['processed_tracks', 'snapshots', 'playlist_cache', 'artist_cache', 'rate_limits', 'unclassified_songs']
+        tables = ['likedSongs', 'usersPlaylists', 'artistTagsCache', 'snapshots', 'rateLimits']
         print("\n[Row Counts]")
         for table in tables:
             try:

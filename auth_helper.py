@@ -45,6 +45,7 @@ def getTokensFromCode(code):
         "redirect_uri": config.REDIRECT_URI
     }
 
+    print("   [API] accounts.spotify.POST -> api/token (authorization_code)")
     response = requests.post(url, data=payload, headers=headers)
     
     if response.status_code == 200:
@@ -71,12 +72,12 @@ def generateToken():
     1. Open this URL in your browser:
        {authUrl}
        
-    2. Authorise the application.
+    2. Authorize the application.
     3. You will be redirected to a URL that looks like: {config.REDIRECT_URI}?code=XXXXXX
-    4. Copy the ENTIRE redirected URL or just the code portion and paste it below.
+    4. Copy the ENTIRE redirected URL and paste it below.
     """)
 
-    redirectInput = input("Enter the redirected URL or code: ").strip()
+    redirectInput = input("Enter the redirected URL: ").strip()
     
     code = redirectInput
     if "code=" in redirectInput:

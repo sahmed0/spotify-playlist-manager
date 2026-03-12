@@ -16,6 +16,7 @@ class LeakyBucket:
     """
     A thread-safe Leaky Bucket rate limiter implementation with database persistence.
     This guarantees that we strictly enforce N requests per T seconds rolling window.
+    Threading allows us to run multiple 'threads' concurrently within a single process.
     """
     def __init__(self, maxRequests, timeWindowSeconds, bucketId):
         self.maxRequests = maxRequests
@@ -61,7 +62,7 @@ class LeakyBucket:
         if waitTime <= 0:
             return
             
-        jitter = waitTime * random.uniform(0.1, 0.2)
+        jitter = waitTime * random.uniform(0.05, 0.5)
         totalWait = waitTime + jitter
         
         if totalWait > logThreshold:
@@ -74,6 +75,7 @@ class LeakyBucket:
         Blocks until a request token becomes available in the bucket.
         This is the primary gateway function to stall processing before exceeding limits.
         """
+        # Ensure requests are not made faster than average spacing (leak rate)
         with self.lock:
             if self.requestTimestamps and self.averageSpacing > 0:
                 lastRequestTime = self.requestTimestamps[-1]
@@ -86,6 +88,7 @@ class LeakyBucket:
 
             self._cleanOldRequests()
             
+            # If bucket is full, wait for oldest request to expire
             while len(self.requestTimestamps) >= self.maxRequests:
                 oldestTimestamp = self.requestTimestamps[0]
                 now = time.time()
@@ -104,13 +107,16 @@ class LeakyBucket:
             except Exception as e:
                 print(f"Warning: Failed to save rate limit state: {e}")
 
+    # Allows LeakyBucket to be used as a context manager (in a with statement)
     def __enter__(self):
         self.acquire()
         return self
 
+    # Allows LeakyBucket to be used as a context manager (in a with statement)
     def __exit__(self, exc_type, exc_val, exc_tb):
         pass
-        
+
+    # Allows LeakyBucket to be used as a decorator (e.g., placing @spotifyBucket above a function to rate-limit it automatically)
     def __call__(self, func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -129,54 +135,15 @@ class RateLimitAdapter(HTTPAdapter):
         super().__init__(*args, **kwargs)
 
     def send(self, request, **kwargs):
-        while True:
-            try:
-                response = super().send(request, **kwargs)
-                
-                if response.status_code == 429:
-                    print("   [429] Too Many Requests. Handling retry...")
-                    retryAfter = response.headers.get("Retry-After")
-                    waitTime = int(retryAfter) + 1 if retryAfter else 35
-                    
-                    print(f"   Rate Limit 429 Hit! Sleeping for {waitTime}s...")
-                    time.sleep(waitTime)
-                    
-                    if self.bucket:
-                        self.bucket.acquire()
-                        
-                    continue 
-                    
-                if self.max_retries and hasattr(self.max_retries, 'is_retry'):
-                    if response.status_code in self.max_retries.status_forcelist:
-                         try:
-                             retries = self.max_retries.increment(response=response)
-                             retries.sleep(response) 
-                             self.max_retries = retries
-                             
-                             if self.bucket:
-                                 self.bucket.acquire()
-                             continue
-                         except Exception:
-                             print(f"   Max retries exceeded for {response.status_code}.")
-                             return response 
-
-                return response
-
-            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
-                print(f"   Connection/Timeout Error: {e}")
-                if self.max_retries:
-                    try:
-                        retries = self.max_retries.increment(error=e)
-                        retries.sleep()
-                        self.max_retries = retries
-                        
-                        if self.bucket:
-                            self.bucket.acquire()
-                        continue
-                    except Exception as retry_err:
-                        print(f"   Max retries exceeded for connection error: {retry_err}")
-                        raise retry_err 
-                raise e 
+        """
+        Gating mechanism for HTTP requests.
+        Gate 1: Pro-active local bucket acquisition.
+        Gate 2: Reactive retry handling via super().send() which leverages PrintingRetry.
+        """
+        if self.bucket:
+            self.bucket.acquire()
+        
+        return super().send(request, **kwargs)
 
 class PrintingRetry(Retry):
     """
@@ -184,19 +151,23 @@ class PrintingRetry(Retry):
     This gives the user visibility into transient network stalls without crashing.
     """
     def sleep(self, response=None):
+        """
+        Handles the wait period between retries, respecting Retry-After headers.
+        Adds a safety buffer to prevent edge-case timing issues on the server.
+        """
         retryAfter = self.get_retry_after(response)
         if not retryAfter:
-             retryAfter = self.backoff_factor * (2 ** (len(self.history) + 1))
+             # Exponential backoff: backoff_factor * (2 ** (number_of_retries))
+             retryAfter = self.backoff_factor * (2 ** (len(self.history)))
         
-        print(f"   !!! Rate Limit / Error detected. Retrying in {retryAfter:.2f} seconds... !!!")
+        # We add a 10s safety buffer to avoid 'off-by-one' millisecond errors on Spotify's side
+        totalWait = retryAfter + 10
+        print(f"   !!! Rate Limit / Error detected. Retrying in {totalWait:.2f} seconds... !!!")
         
-        if retryAfter > 0:
-            print(f"   [WARNING] Retry-After request detected. Sleeping for ({retryAfter:.2f}s).")
-            
-        time.sleep(retryAfter)
+        time.sleep(totalWait)
 
-spotifyBucket = LeakyBucket(maxRequests=1, timeWindowSeconds=10.0, bucketId="spotifyGlobal")
-lastfmBucket = LeakyBucket(maxRequests=5, timeWindowSeconds=1.0, bucketId="lastfmGlobal")
+spotifyBucket = LeakyBucket(maxRequests=5, timeWindowSeconds=30.0, bucketId="spotifyGlobal")
+lastfmBucket = LeakyBucket(maxRequests=4, timeWindowSeconds=1.0, bucketId="lastfmGlobal")
 
 class RateLimitedSession(requests.Session):
     """
@@ -222,8 +193,9 @@ def createResilientSession(bucket, retries=3, backoffFactor=1.0):
     retryStrategy = PrintingRetry(
         total=retries,
         backoff_factor=backoffFactor,
-        status_forcelist=[429, 500, 502, 503, 504], 
-        allowed_methods=["HEAD", "GET", "PUT", "DELETE", "OPTIONS", "TRACE", "POST"]
+        status_forcelist=[429, 500, 502, 503],
+        # Only retry on GET requests (not POST to prevent duplicates)
+        allowed_methods=["GET"]
     )
     
     adapter = RateLimitAdapter(max_retries=retryStrategy, bucket=bucket)

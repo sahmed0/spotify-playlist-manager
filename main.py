@@ -167,12 +167,12 @@ def op7SnapshotPlaylist():
         print(f"Snapshotting all {len(playlists)} playlists...")
         for plName, plId in playlists.items():
             print(f"\nSnapshotting '{plName}'...")
-            client.getPlaylistTracks(plId)
+            client.getPlaylistItems(plId)
         print("\nFinished snapshotting all playlists.")
     else:
         playlistId = playlistData
         print(f"Snapshotting '{name}'...")
-        client.getPlaylistTracks(playlistId)
+        client.getPlaylistItems(playlistId)
         print("Snapshot complete.")
 
 def op8SyncAndAddSongs():
@@ -233,6 +233,10 @@ def mainLoop():
     
     if config.IS_DRY_RUN:
         print(">>> DRY RUN MODE ENABLED <<<")
+    if config.SHOULD_STOP_AFTER_FIRST_MATCH:
+        print(">>> SORT AFTER FIRST MATCH ENABLED <<<")
+    if config.SHOULD_RESET_PLAYLIST_CACHE:
+        print(">>> RESET PLAYLIST CACHE ENABLED <<<")
 
     while True:
         printMenu()

@@ -18,8 +18,13 @@ class LastFMClient:
             raise ValueError("LASTFM_API_KEY not found in config. Please add it to your .env file.")
         self.baseUrl = "http://ws.audioscrobbler.com/2.0/"
         
-        # Use dedicated rate limiter for Last.fm (4 req/sec) with retry logic
+        # Use dedicated rate limiter for Last.fm with retry logic
         self.session = rate_limiter.createResilientSession(bucket=rate_limiter.lastfmBucket)
+
+        # Set user agent for identification with Last.fm API
+        self.session.headers.update({
+            "User-Agent": f"{config.APP_NAME}/{config.APP_VERSION}"
+        })
 
     def fetchArtistTags(self, artistName):
         """
@@ -48,7 +53,7 @@ class LastFMClient:
                 if isinstance(tagList, dict):
                     tagList = [tagList]
                     
-                for tag in tagList[:3]:
+                for tag in tagList[:5]:
                     if 'name' in tag:
                         tags.append(tag['name'])
             
@@ -83,7 +88,7 @@ class LastFMClient:
                 tagList = data['toptags']['tag']
                 if isinstance(tagList, dict):
                     tagList = [tagList]
-                for tag in tagList[:3]:
+                for tag in tagList[:5]:
                     if 'name' in tag:
                         tags.append(tag['name'])
             return tags
@@ -143,7 +148,7 @@ def enrichTracks(songs):
                 source = currentArtistSource
             
             trackTagsMap[song['trackUri']] = tags
-            print(f"[{i+1}/{totalSongs}] {songName} ({primaryArtist}) -> {source}: {tags[:3]}...", end='\r')
+            print(f"[{i+1}/{totalSongs}] {songName} ({primaryArtist}) -> {source}: {tags[:5]}...", end='\r')
             
     except Exception as e:
         print(f"\nLast.fm Error: {e}")
