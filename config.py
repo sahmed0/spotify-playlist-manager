@@ -15,143 +15,135 @@ REFRESH_TOKEN = os.getenv("SPOTIPY_REFRESH_TOKEN")
 LASTFM_API_KEY = os.getenv("LASTFM_API_KEY")
 
 APP_NAME = "liked songs manager"
-APP_VERSION = "2.1.1"
+APP_VERSION = "2.2.0"
 
 SCOPE = "user-library-read playlist-modify-private playlist-modify-public playlist-read-private"
 
-SHOULD_STOP_AFTER_FIRST_MATCH = False
-
-GENRE_MAPPING = {
-    # -------------------------------------------------------------------------
-    # 1. SPECIFIC SUB-GENRES & NICHE STYLES
-    # (Check these first to prevent them being swallowed by broad categories)
-    # -------------------------------------------------------------------------
-
-    # --- Specific Electronic & Dance ---
-    'Techno': ['techno', 'detroit techno', 'minimal techno', 'acid techno', 'dub techno', 'industrial techno'],
-    'House': [
-        'house', 'deep house', 'tech house', 'progressive house', 'acid house',
-        'tropical house', 'chicago house', 'future house', 'bass house', 'french house'
-    ],
-    'Drum and Bass': ['drum and bass', 'dnb', 'liquid funk', 'neurofunk', 'jump up'],
-        'Jungle': ['jungle', 'ragga jungle', 'darkside'],
-    'Garage': ['garage', 'uk garage', 'speed garage', '2-step', 'future garage', 'bassline'],
-    'Synthpop': ['synthpop', 'synth-pop', 'electropop', 'futurepop', 'dark wave'],
-    'Hyperpop': ['hyperpop', 'glitchcore', 'digicore', 'pc music', 'bubblegum bass'],
-
-    # --- Specific Rock & Metal ---
-    'Heavy Metal': [
-        'metal', 'heavy metal', 'thrash metal', 'death metal', 'black metal',
-        'metalcore', 'doom metal', 'power metal', 'groove metal', 'nu metal',
-        'speed metal', 'sludge metal', 'symphonic metal', 'folk metal',
-        'viking metal', 'industrial metal', 'gothic metal', 'grindcore', 'djent'
-    ],
-    'Punk & Post-Punk': [
-        'punk', 'post-punk', 'punk rock', 'hardcore punk', 'pop punk',
-        'skate punk', 'new wave', 'no wave', 'art punk', 'garage punk',
-        'oi', 'crust punk', 'ska punk', 'riot grrrl'
-    ],
-    'Grunge': ['grunge', 'post-grunge', 'seattle sound'],
-    'Shoegaze': ['shoegaze', 'dream pop', 'ethereal wave', 'nu gaze', 'blackgaze'],
-    'Noise Rock': ['noise rock', 'noise pop', 'industrial rock', 'no wave', 'math rock'],
-    'Psychedelic Rock': ['psychedelic rock', 'psych rock', 'acid rock', 'neo-psychedelia', 'space rock'],
-    'Emo': ['emo', 'emo rap', 'screamo', 'midwest emo', 'emotional hardcore'],
-    'Slowcore': ['slowcore', 'sadcore'],
-
-    # --- Specific Hip Hop ---
-    'Trap': ['trap', 'southern hip hop', 'atlanta hip hop', 'trap soul'],
-    'Drill': ['drill', 'uk drill', 'chicago drill', 'brooklyn drill', 'ny drill'],
-    'Grime': ['grime', 'uk garage', 'sublow', 'eskibeat'],
-    'Jazz-Rap': ['jazz rap', 'jazz-rap', 'jazz hop', 'acid jazz'],
-    'Horrorcore': ['horrorcore', 'horror hip hop', 'memphis rap'],
-    'East Coast Hip Hop': ['east coast hip hop', 'new york hip hop', 'boom bap', 'mafioso rap'],
-    'West Coast Hip Hop': ['west coast hip hop', 'g-funk', 'gangsta rap', 'hyphy'],
-
-    # --- Specific Regional Rap ---
-    'Dutch Rap': ['dutch rap', 'nederhop', 'dutch hip hop'],
-    'German Rap': ['german rap', 'deutschrap', 'german hip hop'],
-    'French Rap': ['french rap', 'rap francais', 'cloud rap francais'],
-    'Australian Rap': ['australian rap', 'aussie hip hop', 'australian hip hop'],
-
-    # --- Retro & Specific Pop/Soul ---
-    'Disco': ['disco', 'nu-disco', 'italo disco', 'euro disco', 'post-disco', 'boogie'],
-    'Motown': ['motown', 'the sound of young america', 'detroit soul'],
-    'Northern Soul': ['northern soul', 'mod', 'rare soul'],
-    'Doo-Wop': ['doo-wop', 'doo wop', 'street corner symphony'],
-    'Madchester': ['madchester', 'baggy', 'alternative dance', 'grebo'],
-    'Funk': ['funk', 'p-funk', 'funk rock', 'deep funk', 'go-go', 'boogie'],
-
-    # --- Specific Regional / Cultural Styles ---
-    'Afrobeats': ['afrobeats', 'afropop', 'afro fusion', 'alte', 'naija'],
-    'K-pop': ['k-pop', 'korean pop', 'k-rock', 'k-hip hop', 'korean r&b'],
-    'Bollywood': ['bollywood', 'filmi', 'hindi film', 'indian pop'],
-    'Punjabi Pop': ['punjabi pop', 'bhangra pop'],
-    'Punjabi': ['punjabi', 'punjabi hip hop', 'punjabi folk'],
-    'Sufi': ['sufi', 'sufi rock', 'qawwali fusion'],
-    'Qawali': ['qawali', 'qawwali', 'ghazal'],
-    'Reggaeton': ['reggaeton', 'neoperreo', 'cubaton'],
-    'Dancehall': ['dancehall', 'bashment', 'ragga'],
-    'Salsa & Tropical': ['salsa', 'bachata', 'merengue', 'cumbia', 'vallenato', 'tropical'],
-    'Latin Urbano': ['latin urbano', 'urbano latino', 'latin hip hop', 'latin trap', 'dembow'],
-    'Flamenco': ['flamenco', 'nuevo flamenco', 'rumba flamenca', 'flamenco pop'],
-
-    # -------------------------------------------------------------------------
-    # 2. BROAD / UMBRELLA GENRES
-    # (Catch-alls for songs that didn't match the specific buckets above)
-    # -------------------------------------------------------------------------
-
-    'Electronic': [
-        'electronic', 'electronica', 'idm', 'downtempo', 'breakbeat',
-        'electro', 'complextro', 'glitch', 'trip hop'
-    ],
-    'Dance': ['dance', 'eurodance', 'dance-pop', 'club', 'party'],
-    'Indie': [
-        'indie', 'indie rock', 'indie pop', 'alternative', 'indie folk',
-        'lo-fi indie', 'chamber pop', 'twee pop', 'indietronica'
-    ],
-    'R&B': ['r&b', 'contemporary r&b', 'rhythm and blues', 'quiet storm', 'slow jam'],
-    'Alternative R&B': ['alternative r&b', 'pbr&b', 'neo-soul', 'future soul'],
-    'Soul': ['soul', 'blue-eyed soul', 'psychedelic soul', 'southern soul', 'chicago soul'],
-    'Jazz & Soul': ['jazz', 'smooth jazz', 'fusion', 'bebop', 'swing', 'big band', 'cool jazz'],
-    'Blues': ['blues', 'delta blues', 'chicago blues', 'electric blues', 'blues rock', 'country blues'],
-    'Country': [
-        'country', 'classic country', 'outlaw country', 'country pop',
-        'country rock', 'western swing', 'honky tonk', 'nashville sound', 'bro-country'
-    ],
-    'Folk': ['folk', 'contemporary folk', 'traditional folk', 'indie folk', 'freak folk', 'anti-folk'],
-    'Americana': ['americana', 'roots music', 'alt-country', 'texas country', 'bluegrass'],
-    'Latin': ['latin', 'latin pop', 'musica mexicana', 'ranchera', 'norteno', 'mariachi'],
-    'Reggae': ['regae', 'reggae', 'roots reggae', 'dub', 'rocksteady', 'lovers rock'],
-    'Classical': [
-        'classical', 'baroque', 'romantic', 'classical period', 'chamber music',
-        'symphony', 'concerto', 'sonata', 'choral', 'renaissance', 'medieval'
-    ],
-    'Opera': ['opera', 'operetta', 'aria', 'bel canto'],
-
-    # --- Broad Regional Buckets ---
-    'African Music': ['african', 'highlife', 'soukous', 'juju', 'coupé-décalé', 'afrobeat', 'desert blues'],
-    'Brazilian Music': [
-        'brazilian', 'samba', 'bossa nova', 'mpb', 'baile funk',
-        'funk carioca', 'tropicalia', 'pagode', 'forro', 'sertanejo'
-    ],
-    'French Music': ['french', 'chanson', 'variete francaise', 'nouvelle scene'],
-    'French Pop': ['french pop', 'yé-yé', 'french indie pop'],
-    'Italian Music': ['italian', 'italian pop', 'italo pop', 'canzone napoletana', 'opera pop'],
-    'Turkish Music': ['turkish', 'turkish pop', 'turkish rock', 'anadolu rock', 'arabesque'],
-    'Middle Eastern Music': ['middle eastern', 'arabic pop', 'dabke', 'khaliji', 'shaabi', 'levantine'],
-    'Persian Music': ['persian', 'iranian', 'persian pop', 'bandari'],
-    'Korean Music': ['korean', 'trot', 'k-indie', 'korean ballad'],
-    'Japanese Music': ['japanese', 'j-pop', 'j-rock', 'city pop', 'kayokyoku', 'visual kei', 'anime'],
-    'Thai Music': ['thai', 'thai pop', 't-pop', 'luk thung', 'mor lam'],
-    'Chinese Music': ['chinese', 'c-pop', 'mandopop', 'cantopop', 'chinese indie'],
-    'Pakistani Music': ['pakistani', 'pakistani pop', 'urdu', 'lollywood', 'pakistani rock', 'urdu pop'],
-}
+# The maximum number of genre playlists a single song can be assigned to.
+# Set to None for no limit.
+MAX_GENRE_PLAYLISTS_PER_SONG = 2
 
 UNDEFINED_TAG = "Undefined"
 
 IS_DRY_RUN = False
 
 # This maximum only applies to Last.fm (Spotify limit is defined by user in CLI)
-MAX_TRACKS_TO_PROCESS = None
+MAX_TRACKS_TO_PROCESS = 1000
 
 SHOULD_RESET_PLAYLIST_CACHE = False
+
+GENRE_MAPPING = {
+    # -------------------------------------------------------------------------
+    # 1. SPECIFIC SUB-GENRES & NICHE STYLES
+    # -------------------------------------------------------------------------
+
+    # --- Specific Electronic & Dance ---
+    'Techno': ['techno', 'detroit techno', 'minimal techno', 'acid techno', 'dub techno', 'industrial techno', 'hard techno', 'melodic techno'],
+    'House': [
+        'house', 'deep house', 'tech house', 'progressive house', 'acid house',
+        'tropical house', 'chicago house', 'future house', 'bass house', 'french house', 'lo-fi house', 'microhouse', 'electro house'
+    ],
+    'Drum and Bass': ['drum and bass', 'liquid funk', 'neurofunk', 'jump up', 'darkstep', 'techstep', 'jungle', 'ragga jungle', 'darkside'],
+    'Garage': ['garage', 'uk garage', 'speed garage', '2-step', 'future garage', 'bassline'],
+    'Synthpop': ['synthpop', 'electropop', 'futurepop', 'dark wave', 'coldwave', 'minimal wave'],
+    'Hyperpop': ['hyperpop', 'glitchcore', 'digicore', 'pc music', 'bubblegum bass', 'deconstructed club'],
+    'UK Indie': ['britpop', 'art pop', 'mod revival', 'neo-psychedelia', 'post-britpop', 'shoegaze influence', 'madchester', 'baggy', 'alternative dance', 'grebo', ('uk', 'indie pop'), ('british', '90s'), ('uk', '90s rock')],
+
+    # --- Specific Rock & Metal ---
+    'Heavy Metal': ['heavy metal', 'thrash metal', 'doom metal', 'power metal', 'speed metal', 'nwobhm', 'hair metal'],
+    'Death Metal': [
+        'death metal', 'black metal', 'metalcore', 'groove metal', 'nu metal', 'sludge metal', 'symphonic metal', 
+        'folk metal', 'viking metal', 'industrial metal', 'gothic metal', 'grindcore', 'djent', 'deathcore', 
+        'post-metal', 'symphonic black metal'],
+    'Hard Rock': ['hard rock', 'blues rock', 'glam rock', 'arena rock', 'sleaze rock', 'stoner rock', 'psychedelic rock', 'alternative metal', 'funk metal', 'southern rock', 'industrial rock', 'power pop', ('blues', 'rock')],
+    'Punk & Post-Punk': [
+        'punk', 'post-punk', 'hardcore punk', 'pop punk', 'skate punk', 'new wave', 'no wave', 
+        'art punk', 'garage punk', 'oi', 'crust punk', 'ska punk', 'riot grrrl', 'post-hardcore', 'd-beat', ('punk', 'rock')],
+    'Grunge': ['grunge', 'post-grunge', 'seattle sound'],
+    'Shoegaze': ['shoegaze', 'dream pop', 'ethereal wave', 'nu gaze', 'blackgaze', 'noise pop', 'slowcore', 'sadcore', ('indie', 'ambient'), ('rock', 'ethereal'), ('indie', 'dreamy')],
+    'Noise Rock': ['noise rock', 'industrial rock', 'no wave', 'math rock', 'noise'],
+    'Psychedelic Rock': ['psychedelic rock', 'acid rock', 'neo-psychedelia', 'space rock', 'krautrock'],
+    'Emo': ['emo', 'emo rap', 'screamo', 'midwest emo', 'emotional hardcore', 'skramz'],
+
+    # --- Specific Hip Hop ---
+    'Trap': ['trap', 'southern hip hop', 'atlanta hip hop', 'trap soul', 'latin trap', 'crunk', 'plugg'],
+    'Drill': ['drill', 'uk drill', 'chicago drill', 'brooklyn drill', 'ny drill'],
+    'Grime': ['grime', 'sublow', 'eskibeat'],
+    'Jazz-Rap': ['jazz rap', 'acid jazz', 'jazz hop'],
+    'Horrorcore': ['horrorcore', 'memphis rap', 'phonk'],
+    'East Coast Hip Hop': ['east coast hip hop', 'east coast rap', 'new york hip hop', 'boom bap', 'mafioso rap'],
+    'West Coast Hip Hop': ['west coast hip hop', 'west coast rap', 'g-funk', 'gangsta rap', 'hyphy', 'compton'],
+
+    # --- Specific Regional Rap ---
+    'Dutch Rap': ['dutch rap', 'nederhop', ('dutch', 'hip hop'), ('netherlands', 'rap')],
+    'German Rap': ['german rap', 'deutschrap', ('german', 'hip hop'), ('germany', 'rap'), ('austria', 'rap'), ('swiss', 'rap')],
+    'French Rap': ['french rap', 'cloud rap francais', ('french', 'hip hop'), ('france', 'rap')],
+    'Australian Rap': ['australian rap', 'aussie hip hop', ('australian', 'hip hop'), ('australia', 'rap')],
+
+    # --- Retro & Specific Pop/Soul ---
+    'Disco': ['disco', 'nu-disco', 'italo disco', 'euro disco', 'post-disco', 'boogie', 'space disco', ('70s', 'dance', 'retro')],
+    'Motown': ['motown', 'detroit soul', ('soul', 'detroit', '60s')],
+    'Vintage R&B': ['northern soul', 'mod', 'rare soul', 'doo-wop', 'street corner symphony', ('soul', '60s', 'r&b'), ('r&b', 'soul', '50s'), ('soul', '70s', 'r&b')],
+    'Funk': ['funk', 'p-funk', 'funk rock', 'deep funk', 'go-go', 'boogie', ('soul', 'groove', '70s')],
+
+    # --- Specific Regional / Cultural Styles ---
+    'Afrobeats': ['afrobeats', 'afropop', 'afro fusion', 'alte', 'naija', 'amapiano'],
+    'K-pop': ['k-pop', 'k-rock', 'k-hip hop', 'korean r&b'],
+    'Bollywood': ['bollywood', 'filmi', 'hindi film', 'indian pop'],
+    'Punjabi Pop': ['punjabi pop', 'bhangra pop', 'punjabi hip hop', ('punjabi', 'bhangra', 'pop'), ('bhangra', 'hip hop')],
+    'Desi': ['desi', 'punjabi', 'punjabi folk', ('india', 'folk'), ('pakistan', 'folk'), ('punjabi', 'folk')],
+    'Qawwali': ['sufi', 'sufi rock', 'qawwali fusion', 'qawwali', 'ghazal', ('islamic', 'folk'), ('pakistan', 'traditional')],
+    'Reggaeton': ['reggaeton', 'neoperreo', 'cubaton', ('latin', 'reggae'), ('latin', 'dancehall')],
+    'Dancehall': ['dancehall', 'bashment', 'ragga', ('caribbean', 'dance'), ('jamaica', 'dance')],
+    'Salsa': ['salsa', 'bachata', 'merengue', 'cumbia', 'vallenato', 'tropical'],
+    'Latin Urban': ['latin urbano', 'latin hip hop', 'latin trap', 'dembow', ('latin', 'hip hop'), ('latin', 'rap'), ('latin', 'trap'), ('spanish', 'rap')],
+    'Flamenco': ['flamenco', 'nuevo flamenco', 'rumba flamenca', 'flamenco pop', ('spanish', 'folk'), ('spain', 'acoustic')],
+
+    # -------------------------------------------------------------------------
+    # 2. BROAD / UMBRELLA GENRES
+    # -------------------------------------------------------------------------
+
+    # --- Electronic ---
+    'Chill Electronic': ['downtempo', 'idm', 'trip hop', 'chillout', 'ambient', ('electronic', 'chill'), ('electronic', 'relax'), ('electronic', 'ambient')],
+    'Club Electronic': ['electronic', 'breakbeat', 'electro', 'complextro', 'glitch', 'edm', ('electronic', 'party'), ('electronic', 'club')],
+    'Dance': ['dance', 'eurodance', 'dance-pop', 'club', 'party', 'vocal trance'],
+
+    # --- Indie ---
+    'Indie Rock': ['indie rock', 'alternative', 'slacker rock', 'post-punk revival', ('indie', 'rock')],
+    'Indie Pop': ['indie pop', 'chamber pop', 'twee pop', 'indietronica', 'bedroom pop', 'jangle pop', ('indie', 'pop')],
+    'Indie Folk': ['indie folk', 'freak folk', 'anti-folk', 'singer-songwriter', ('indie', 'folk'), ('indie', 'acoustic')],
+
+    'R&B': ['r&b', 'contemporary r&b', 'quiet storm', 'slow jam', 'new jack swing', ('urban', 'pop'), ('soul', 'pop')],
+    'Alternative R&B': ['alternative r&b', 'neo-soul', 'future soul', ('alternative', 'indie', 'r&b')],
+    'Soul': ['soul', 'blue-eyed soul', 'psychedelic soul', 'southern soul', 'chicago soul', ('classic', 'r&b')],
+    'Jazz': ['jazz', 'smooth jazz', 'fusion', 'bebop', 'swing', 'big band', 'cool jazz', 'vocal jazz', 'hard bop', ('jazz', 'soul')],
+    'Blues': ['blues', 'delta blues', 'chicago blues', 'electric blues', 'blues rock', 'country blues', ('acoustic', 'blues')],
+    'Country': [
+        'country', 'classic country', 'outlaw country', 'country pop', 'country rock', 
+        'western swing', 'honky tonk', 'nashville sound', 'bro-country', 'alt-country', ('country', 'pop'), ('country', 'rock')
+    ],
+    'Folk': ['folk', 'contemporary folk', 'traditional folk'],
+    'Americana': ['americana', 'roots music', 'texas country', 'bluegrass'],
+    'Latin': ['latin pop', 'musica mexicana', 'ranchera', 'norteno', 'mariachi', 'bolero'],
+    'Reggae': ['reggae', 'roots reggae', 'dub', 'rocksteady', 'lovers rock', 'ska'],
+    'Classical': [
+        'classical', 'baroque', 'chamber music', 'symphony', 'concerto', 
+        'sonata', 'choral', 'renaissance', 'medieval', 'contemporary classical', ('orchestral', 'instrumental')
+    ],
+    'Opera': ['opera', 'operetta', 'aria', 'bel canto'],
+
+    # --- Broad Regional Buckets ---
+    'African Music': ['african', 'highlife', 'soukous', 'juju', 'coupé-décalé', 'afrobeat', 'desert blues', ('africa', 'traditional')],
+    'Brazilian Music': ['brazilian', 'samba', 'bossa nova', 'mpb', 'baile funk', 'tropicalia', 'pagode', 'forro', 'sertanejo', ('brazil', 'pop'), ('brazilian', 'acoustic')],
+    'French Music': ['french', 'chanson', 'variete francaise', 'nouvelle scene', ('french', 'acoustic'), ('france', 'traditional')],
+    'French Pop': ['french pop', 'yé-yé', 'french indie pop', ('france', 'pop')],
+    'Italian Music': ['italian', 'italian pop', 'canzone napoletana', 'opera pop', ('italy', 'pop')],
+    'Turkish Music': ['turkish', 'turkish pop', 'turkish rock', 'anadolu rock', 'arabesque', ('turkey', 'rock')],
+    'Middle Eastern Music': ['middle eastern', 'arabic pop', 'dabke', 'khaliji', 'shaabi', 'levantine', ('middle east', 'traditional')],
+    'Persian Music': ['persian', 'persian pop', 'bandari', ('iran', 'pop'), ('iran', 'persian', 'traditional')],
+    'Korean Music': ['trot', 'k-indie', 'korean ballad', ('korean', 'indie')],
+    'Japanese Music': ['j-pop', 'j-rock', 'city pop', 'kayokyoku', 'visual kei', 'anime', 'shibuya-kei', ('japanese', 'pop'), ('japan', 'rock')],
+    'Thai Music': ['thai pop', 'luk thung', 'mor lam', ('thailand', 'pop')],
+    'Chinese Music': ['c-pop', 'mandopop', 'cantopop', 'chinese indie', ('chinese', 'pop'), ('china', 'indie')],
+    'Pakistani Music': ['pakistani pop', 'lollywood', 'pakistani rock']
+}

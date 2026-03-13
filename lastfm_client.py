@@ -53,9 +53,19 @@ class LastFMClient:
                 if isinstance(tagList, dict):
                     tagList = [tagList]
                     
-                for tag in tagList[:10]:
+                for tag in tagList:
                     if 'name' in tag:
-                        tags.append(tag['name'])
+                        try:
+                            # Use 0 as default if count is missing or invalid
+                            weight_raw = tag.get('count', 0)
+                            weight = int(weight_raw) if weight_raw is not None else 0
+                        except (ValueError, TypeError):
+                            weight = 0
+                        tags.append({'name': tag['name'], 'weight': weight})
+                
+                # Sort by weight descending and take top 5
+                tags.sort(key=lambda x: x['weight'], reverse=True)
+                tags = [t['name'] for t in tags[:5]]
             
             return tags
 
@@ -88,9 +98,20 @@ class LastFMClient:
                 tagList = data['toptags']['tag']
                 if isinstance(tagList, dict):
                     tagList = [tagList]
-                for tag in tagList[:10]:
+                
+                for tag in tagList:
                     if 'name' in tag:
-                        tags.append(tag['name'])
+                        try:
+                            # Use 0 as default if count is missing or invalid
+                            weight_raw = tag.get('count', 0)
+                            weight = int(weight_raw) if weight_raw is not None else 0
+                        except (ValueError, TypeError):
+                            weight = 0
+                        tags.append({'name': tag['name'], 'weight': weight})
+                
+                # Sort by weight descending and take top 5
+                tags.sort(key=lambda x: x['weight'], reverse=True)
+                tags = [t['name'] for t in tags[:5]]
             return tags
             
         except Exception as e:
@@ -121,6 +142,9 @@ def enrichTracks(songs):
         currentArtistTags = []
         currentArtistSource = None 
         
+        batchUpdates = []
+        BATCH_SIZE = 50
+
         for i, song in enumerate(songs):
             songName = song['trackName']
             primaryArtist = song['artists'][0]['name'] if song['artists'] else "Unknown"
@@ -153,8 +177,19 @@ def enrichTracks(songs):
                     source = currentArtistSource
             
             trackTagsMap[song['trackUri']] = tags
-            state.updateTrackTags(song['trackUri'], tags)
+            
+            # Batch updates to likedSongs table
+            batchUpdates.append((song['trackUri'], tags))
+            
+            if len(batchUpdates) >= BATCH_SIZE:
+                 state.saveTrackTagsBatch(batchUpdates)
+                 batchUpdates = []
+
             print(f"[{i+1}/{totalSongs}] {songName} ({primaryArtist}) -> {source}: {tags[:5]}...", end='\r')
+            
+        # Final flush for remaining updates
+        if batchUpdates:
+            state.saveTrackTagsBatch(batchUpdates)
             
     except Exception as e:
         print(f"\nLast.fm Error: {e}")

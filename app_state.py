@@ -51,6 +51,12 @@ def initDb():
             )
         ''')
         
+        # Ensure snapshotId exists in usersPlaylists (Migration for older databases)
+        cursor = conn.execute("PRAGMA table_info(usersPlaylists)")
+        columns = [row['name'] for row in cursor.fetchall()]
+        if 'snapshotId' not in columns:
+            conn.execute("ALTER TABLE usersPlaylists ADD COLUMN snapshotId TEXT")
+        
         conn.execute('''
             CREATE TABLE IF NOT EXISTS snapshots (
                 playlistId TEXT,
@@ -184,6 +190,24 @@ def updateTrackTags(trackUri, tags):
         conn.execute(
             "UPDATE likedSongs SET lastfmTags = ? WHERE trackUri = ?",
             (json.dumps(tags), trackUri)
+        )
+        conn.commit()
+
+def saveTrackTagsBatch(updates):
+    """
+    Updates the lastfmTags for multiple tracks in a single transaction.
+    
+    Args:
+        updates (list): A list of (trackUri, tags_list) tuples.
+    """
+    if not updates:
+        return
+        
+    with getDbConnection() as conn:
+        # Transactions are handled by the context manager 'with conn:'
+        conn.executemany(
+            "UPDATE likedSongs SET lastfmTags = ? WHERE trackUri = ?",
+            [(json.dumps(tags), uri) for uri, tags in updates]
         )
         conn.commit()
 

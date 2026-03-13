@@ -62,8 +62,8 @@ class LeakyBucket:
         if waitTime <= 0:
             return
             
-        jitter = waitTime * random.uniform(0.1, 0.5)
-        totalWait = waitTime + jitter
+        # Add random jitter
+        totalWait = waitTime * (1 + random.uniform(0.01, 0.1))
         
         if totalWait > logThreshold:
             print(f"Rate Limit ({self.bucketId}): Pausing for {totalWait:.2f}s")
@@ -167,7 +167,7 @@ class PrintingRetry(Retry):
         time.sleep(totalWait)
 
 spotifyBucket = LeakyBucket(maxRequests=5, timeWindowSeconds=30.0, bucketId="spotifyGlobal")
-lastfmBucket = LeakyBucket(maxRequests=4, timeWindowSeconds=1.0, bucketId="lastfmGlobal")
+lastfmBucket = LeakyBucket(maxRequests=10, timeWindowSeconds=1.0, bucketId="lastfmGlobal")
 
 class RateLimitedSession(requests.Session):
     """

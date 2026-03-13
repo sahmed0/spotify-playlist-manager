@@ -8,6 +8,7 @@ import app_state as state
 import auth_helper
 import lastfm_client
 import sorter
+import time
 from spotify_client import SpotifyClient
 
 def op1Authenticate():
@@ -42,11 +43,22 @@ def op2FetchLikedSongs():
     else:
         print("Using full library fetch (tail is not yet complete)...")
          
+    startTime = time.time()
     results, newOffset, isEndOfLibrary, wasCutoffReached = client.fetchCurrentUserSavedTracks(
         maxTracks=maxTracks, 
         startOffset=startOffset,
         cutoffDate=cutoffDate
     )
+    endTime = time.time()
+    
+    duration = endTime - startTime
+    minutes = int(duration // 60)
+    seconds = duration % 60
+    
+    if minutes > 0:
+        timeStr = f"{minutes}m {seconds:.2f}s"
+    else:
+        timeStr = f"{seconds:.2f}s"
     
     if isEndOfLibrary:
         print("Reached the end of your Spotify Liked Songs library.")
@@ -55,6 +67,9 @@ def op2FetchLikedSongs():
     if isEndOfLibrary or wasCutoffReached:
         print("Sync session finished.")
         state.setMemoryVal("likedSongsOffset", 0) # Reset offset for next sync
+
+    print(f"\nFinished fetching liked songs session.")
+    print(f"Time taken: {timeStr}")
 
 def op3FetchLastfmTags():
     """Operation 3: Retrieves genre tags from Last.fm for tracks missing metadata in the database."""
@@ -68,9 +83,21 @@ def op3FetchLastfmTags():
         
     print(f"Fetching tags for {len(tracks)} tracks...")
     
+    startTime = time.time()
     lastfm_client.enrichTracks(tracks)
+    endTime = time.time()
     
+    duration = endTime - startTime
+    minutes = int(duration // 60)
+    seconds = duration % 60
+    
+    if minutes > 0:
+        timeStr = f"{minutes}m {seconds:.2f}s"
+    else:
+        timeStr = f"{seconds:.2f}s"
+        
     print(f"\nFinished fetching Last.fm tags for {len(tracks)} tracks.")
+    print(f"Time taken: {timeStr}")
 
 def op4SortSongs():
     """Operation 4: Classifies unclassified tracks into genre buckets based on their Last.fm tags."""
@@ -119,10 +146,22 @@ def op5FetchUserPlaylists():
     print("\n--- Operation 5: Fetch User Playlists ---")
     client = SpotifyClient(isDryRun=config.IS_DRY_RUN)
     
+    startTime = time.time()
     client.refreshPlaylistCache(force=True)
+    endTime = time.time()
+    
+    duration = endTime - startTime
+    minutes = int(duration // 60)
+    seconds = duration % 60
+    
+    if minutes > 0:
+        timeStr = f"{minutes}m {seconds:.2f}s"
+    else:
+        timeStr = f"{seconds:.2f}s"
     
     playlists = state.getAllCachedPlaylists()
     print(f"Successfully cached {len(playlists)} user playlists.")
+    print(f"Time taken: {timeStr}")
 
 def op6CreateMissingPlaylists():
     """Operation 6: Identifies and creates playlists on Spotify that exist in config but not on the account."""
@@ -148,10 +187,22 @@ def op6CreateMissingPlaylists():
         return
         
     client = SpotifyClient(isDryRun=config.IS_DRY_RUN)
+    startTime = time.time()
     for name in missingPlaylists:
         client.createPlaylistForCurrentUser(name)
+    endTime = time.time()
+    
+    duration = endTime - startTime
+    minutes = int(duration // 60)
+    seconds = duration % 60
+    
+    if minutes > 0:
+        timeStr = f"{minutes}m {seconds:.2f}s"
+    else:
+        timeStr = f"{seconds:.2f}s"
         
     print(f"Finished creating {len(missingPlaylists)} missing playlists.")
+    print(f"Time taken: {timeStr}")
 
 def _selectPlaylist(promptText):
     """Helper to select a playlist from the cache interactively."""
@@ -225,6 +276,7 @@ def op8SyncAndAddSongs():
         
         client.addUniqueTracksToPlaylist(plId, targetUris)
         
+    startTime = time.time()
     if name == 'all':
         playlists = playlistData
         print(f"Syncing all {len(playlists)} playlists...")
@@ -234,6 +286,18 @@ def op8SyncAndAddSongs():
     else:
         syncSinglePlaylist(name, playlistData)
         print("\nSync complete.")
+    endTime = time.time()
+    
+    duration = endTime - startTime
+    minutes = int(duration // 60)
+    seconds = duration % 60
+    
+    if minutes > 0:
+        timeStr = f"{minutes}m {seconds:.2f}s"
+    else:
+        timeStr = f"{seconds:.2f}s"
+
+    print(f"Total time taken: {timeStr}")
 
 def printMenu():
     """Displays the main interactive menu for the Spotify Liked Songs Organiser."""
@@ -261,8 +325,8 @@ def mainLoop():
     
     if config.IS_DRY_RUN:
         print(">>> DRY RUN MODE ENABLED <<<")
-    if config.SHOULD_STOP_AFTER_FIRST_MATCH:
-        print(">>> SORT AFTER FIRST MATCH ENABLED <<<")
+    if config.MAX_GENRE_PLAYLISTS_PER_SONG is not None:
+        print(f">>> MAX GENRE PLAYLISTS PER SONG: {config.MAX_GENRE_PLAYLISTS_PER_SONG} <<<")
     if config.SHOULD_RESET_PLAYLIST_CACHE:
         print(">>> RESET PLAYLIST CACHE ENABLED <<<")
 
