@@ -205,11 +205,14 @@ def op6CreateMissingPlaylists():
     print(f"Time taken: {timeStr}")
 
 def _selectPlaylist(promptText):
-    """Helper to select a playlist from the cache interactively."""
+    """
+    Helper to select one or more playlists from the cache interactively.
+    Returns a dictionary of {name: playlist_id} for selected playlists.
+    """
     playlists = state.getAllCachedPlaylists()
     if not playlists:
         print("No playlists found in local cache. Run Operation 5 first.")
-        return None, None
+        return {}
         
     print("\nAvailable Playlists:")
     names = list(playlists.keys())
@@ -217,49 +220,52 @@ def _selectPlaylist(promptText):
     for i, name in enumerate(names, 1):
         print(f"{i}. {name}")
         
-    choice = input(f"{promptText} (Enter 1-{len(names)}, or 'all'): ").strip().lower()
+    choice = input(f"{promptText} (Enter 1-{len(names)}, e.g. '1, 5', or 'all'): ").strip().lower()
     
     if choice == 'all':
-        return 'all', playlists
+        return playlists
         
-    if choice.isdigit():
-        idx = int(choice) - 1
-        if 0 <= idx < len(names):
-            name = names[idx]
-            return name, playlists[name]
+    selected = {}
+    parts = [p.strip() for p in choice.split(',')]
+    for part in parts:
+        if part.isdigit():
+            idx = int(part) - 1
+            if 0 <= idx < len(names):
+                name = names[idx]
+                selected[name] = playlists[name]
+            else:
+                print(f"Warning: Index {part} is out of range and will be skipped.")
+        elif part:
+            print(f"Warning: '{part}' is not a valid number and will be skipped.")
             
-    print("Invalid selection.")
-    return None, None
+    if not selected:
+        print("No valid selection made.")
+        
+    return selected
 
 def op7SnapshotPlaylist():
-    """Operation 7: Records a local snapshot of tracks currently in a Spotify playlist."""
+    """Operation 7: Records local snapshots of tracks currently in Spotify playlists."""
     print("\n--- Operation 7: Snapshot Playlist ---")
     
-    name, playlistData = _selectPlaylist("Select a playlist to snapshot")
-    if not name:
+    selectedPlaylists = _selectPlaylist("Select playlists to snapshot")
+    if not selectedPlaylists:
         return
         
     client = SpotifyClient(isDryRun=config.IS_DRY_RUN)
     
-    if name == 'all':
-        playlists = playlistData
-        print(f"Snapshotting all {len(playlists)} playlists...")
-        for plName, plId in playlists.items():
-            print(f"\nSnapshotting '{plName}'...")
-            client.getPlaylistItems(plId)
-        print("\nFinished snapshotting all playlists.")
-    else:
-        playlistId = playlistData
-        print(f"Snapshotting '{name}'...")
+    print(f"Snapshoting {len(selectedPlaylists)} playlist(s)...")
+    for name, playlistId in selectedPlaylists.items():
+        print(f"\nSnapshotting '{name}'...")
         client.getPlaylistItems(playlistId)
-        print("Snapshot complete.")
+        
+    print("\nSnapshotting complete.")
 
 def op8SyncAndAddSongs():
-    """Operation 8: Pushes sorted tracks from the local database to their respective Spotify playlists."""
+    """Operation 8: Pushes sorted tracks from the local database to respective Spotify playlists."""
     print("\n--- Operation 8: Sync & Add Songs ---")
     
-    name, playlistData = _selectPlaylist("Select a playlist to sync songs to")
-    if not name:
+    selectedPlaylists = _selectPlaylist("Select playlists to sync songs to")
+    if not selectedPlaylists:
         return
         
     client = SpotifyClient(isDryRun=config.IS_DRY_RUN)
@@ -277,15 +283,11 @@ def op8SyncAndAddSongs():
         client.addUniqueTracksToPlaylist(plId, targetUris)
         
     startTime = time.time()
-    if name == 'all':
-        playlists = playlistData
-        print(f"Syncing all {len(playlists)} playlists...")
-        for plName, plId in list(playlists.items()):
-            syncSinglePlaylist(plName, plId)
-        print("\nFinished syncing all playlists.")
-    else:
-        syncSinglePlaylist(name, playlistData)
-        print("\nSync complete.")
+    
+    print(f"Syncing {len(selectedPlaylists)} playlist(s)...")
+    for name, playlistId in selectedPlaylists.items():
+        syncSinglePlaylist(name, playlistId)
+        
     endTime = time.time()
     
     duration = endTime - startTime
@@ -297,7 +299,7 @@ def op8SyncAndAddSongs():
     else:
         timeStr = f"{seconds:.2f}s"
 
-    print(f"Total time taken: {timeStr}")
+    print(f"\nSync complete. Total time taken: {timeStr}")
 
 def printMenu():
     """Displays the main interactive menu for the Spotify Liked Songs Organiser."""
