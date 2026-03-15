@@ -4,6 +4,12 @@ It fetches a sample of tracks (prioritising 'Undefined' ones) and predicts their
 """
 import sqlite3
 import json
+import os
+import sys
+
+# Ensure the root directory is in sys.path so we can import from the main module
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import sorter
 import config
 from app_state import getDbConnection

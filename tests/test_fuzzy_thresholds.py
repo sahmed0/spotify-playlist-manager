@@ -5,6 +5,12 @@ songs are rescued from 'Undefined' at each level.
 """
 import json
 from thefuzz import fuzz
+import os
+import sys
+
+# Ensure the root directory is in sys.path so we can import from the main module
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import config
 from app_state import getDbConnection
 
