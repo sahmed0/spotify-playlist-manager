@@ -3,7 +3,12 @@ Utility script to reset Last.fm tags in the database.
 This clears lastfmTags for all tracks and empties the tag caches,
 allowing for a completely fresh fetch from Last.fm.
 """
+import os
 import sys
+
+# Ensure the root directory is in sys.path so we can import from app_state
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from app_state import getDbConnection
 
 def reset_lastfm_tags():
@@ -32,7 +37,7 @@ def reset_lastfm_tags():
             print(f"✅ Cleared {cursor.rowcount} entries from trackTagsCache.")
             
             conn.commit()
-            print("\nDatabase reset successfully. You can now run Operation 5/6 to re-fetch tags.")
+            print("\nDatabase reset successfully. You can now run Operation 3 to re-fetch tags.")
             
     except Exception as e:
         print(f"\n❌ Error during reset: {e}")

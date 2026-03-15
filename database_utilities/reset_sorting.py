@@ -3,8 +3,12 @@ Utility script to reset the sorting status in the database.
 This allows you to re-run the categorisation logic from scratch 
 without losing your cached Last.fm tags.
 """
-import sqlite3
+import os
 import sys
+
+# Ensure the root directory is in sys.path so we can import from app_state
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from app_state import getDbConnection
 
 def reset_sorting_tags():
@@ -22,11 +26,11 @@ def reset_sorting_tags():
             cursor = conn.execute("UPDATE likedSongs SET sortedPlaylists = NULL")
             print(f"✅ Reset sorting for {cursor.rowcount} tracks.")
             
-            # 2. Clear memory value for progress (Operation 7/8 usually uses this)
+            # 2. Clear memory value for progress
             conn.execute("DELETE FROM memory WHERE key = 'current_operation_offset'")
             
             conn.commit()
-            print("\nDatabase reset successfully. You can now run Operation 7 to re-classify songs.")
+            print("\nDatabase reset successfully. You can now run Operation 4 to re-classify songs.")
             
     except Exception as e:
         print(f"Error during reset: {e}")
