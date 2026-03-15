@@ -18,10 +18,12 @@ A robust, enterprise-grade automation tool designed to organise your Spotify "Li
 -   **Robust Persistence**: All state—including processed tracks, API rate limits, and tag caches—is stored in a local SQLite database (`state.db`) with Write-Ahead Logging (WAL) enabled for performance and data integrity.
 -   **Non-Destructive Operation**: Appends tracks to playlists safely. It will never delete or re-order your existing songs, allowing you to manually curate playlists alongside the automation.
 
+### Command Line Interface for user interaction. A GUI is planned for the future.
 <p align="center">
   <img src="assets/cli.png" alt="Command Line Interface" width="600">
 </p>
 
+### Example of a playlist created by the software. 
 <p align="center">
   <img src="assets/example.png" alt="Playlist example" width="600">
 </p>
@@ -155,7 +157,7 @@ This repository is a **Proprietary Portfolio Project**.
 
 While I am a strong supporter of Open Source Software, this specific codebase represents a significant personal investment of time and effort and is therefore provided for **recruitment evaluation only**.
 
-* **Permitted:** Viewing, forking (within GitHub only), and local execution for review.
+* **Permitted:** Viewing, forking (within GitHub only), and local execution for evaluation and personal, non-commercial usage only.
 * **Prohibited:** Modification, redistribution, commercial use, and AI/LLM training.
 
 For the full legal terms, please see the [LICENSE](./LICENSE) file.
