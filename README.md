@@ -153,9 +153,9 @@ This repository includes a GitHub Actions workflow (`.github/workflows/sync.yml`
 
 Copyright (c) 2026 Sajid Ahmed. **All Rights Reserved.**
 
-This repository is a **Proprietary Portfolio Project**.
+This repository is a **Proprietary Project**.
 
-While I am a strong supporter of Open Source Software, this specific codebase represents a significant personal investment of time and effort and is therefore provided for **recruitment evaluation only**.
+While I am a strong supporter of Open Source Software, this specific codebase represents a significant personal investment of time and effort and is therefore provided with the following restrictions:
 
 * **Permitted:** Viewing, forking (within GitHub only), and local execution for evaluation and personal, non-commercial usage only.
 * **Prohibited:** Modification, redistribution, commercial use, and AI/LLM training.
