@@ -141,9 +141,8 @@ GENRE_MAPPING = {
     'Turkish Music': ['turkish', 'turkish pop', 'turkish rock', 'anadolu rock', 'arabesque', ('turkey', 'rock')],
     'Middle Eastern Music': ['middle eastern', 'arabic pop', 'dabke', 'khaliji', 'shaabi', 'levantine', ('middle east', 'traditional')],
     'Persian Music': ['persian', 'persian pop', 'bandari', ('iran', 'pop'), ('iran', 'persian', 'traditional')],
-    'Korean Music': ['trot', 'k-indie', 'korean ballad', ('korean', 'indie')],
     'Japanese Music': ['j-pop', 'j-rock', 'city pop', 'kayokyoku', 'visual kei', 'anime', 'shibuya-kei', ('japanese', 'pop'), ('japan', 'rock')],
-    'Thai Music': ['thai pop', 'luk thung', 'mor lam', ('thailand', 'pop')],
     'Chinese Music': ['c-pop', 'mandopop', 'cantopop', 'chinese indie', ('chinese', 'pop'), ('china', 'indie')],
-    'Pakistani Music': ['pakistani pop', 'lollywood', 'pakistani rock']
+    'Pakistani Music': ['pakistani pop', 'lollywood', 'pakistani rock'],
+    "Indian Music": ["indian","indian pop","bollywood","filmi","hindi","desi", "hindustani","indian classical","bhangra","tollywood","kollywood","raga","sitar","tabla","indian indie"]
 }
