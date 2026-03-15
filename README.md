@@ -1,6 +1,11 @@
 # Spotify Liked Songs Sorter
 
-![Copyright](https://img.shields.io/badge/Copyright-2026_Sajid_Ahmed-limegreen.svg)
+![Copyright](https://img.shields.io/badge/Copyright-2026_Sajid_Ahmed-darkblue.svg)
+![Spotify](https://img.shields.io/badge/Spotify-Web_API-limegreen.svg)
+![Last.fm](https://img.shields.io/badge/Last.fm-API-crimson.svg)
+![SQLite](https://img.shields.io/badge/Database-SQLite3-yellow.svg)
+![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)
+
 
 A robust, enterprise-grade automation tool designed to organise your Spotify "Liked Songs" into genre-specific playlists. Engineered for high reliability, it navigates the complexities of the 2026 Spotify API landscape using intelligent synchronisation, strict rate limiting, and persistent state management.
 
@@ -12,6 +17,14 @@ A robust, enterprise-grade automation tool designed to organise your Spotify "Li
 -   **Enterprise-Grade Rate Limiting**: Implements a **Leaky Bucket algorithm** with jitter and exponential backoff. It proactively respects Spotify's strict "Development Mode" limits and automatically handles `HTTP 429 Too Many Requests` responses with `Retry-After` headers.
 -   **Robust Persistence**: All state—including processed tracks, API rate limits, and tag caches—is stored in a local SQLite database (`state.db`) with Write-Ahead Logging (WAL) enabled for performance and data integrity.
 -   **Non-Destructive Operation**: Appends tracks to playlists safely. It will never delete or re-order your existing songs, allowing you to manually curate playlists alongside the automation.
+
+<p align="center">
+  <img src="assets/cli.png" alt="Command Line Interface" width="600">
+</p>
+
+<p align="center">
+  <img src="assets/example.png" alt="Playlist example" width="600">
+</p>
 
 ---
 
@@ -127,14 +140,14 @@ To test without modifying your library or consuming Spotify rate limits, set `DR
 ---
 
 ## Automated Workflows
-This repository includes a GitHub Actions workflow (`.github/workflows/daily_sync.yml`) designed to run the sorter automatically every 24 hours.
+This repository includes a GitHub Actions workflow (`.github/workflows/sync.yml`) designed to run the sorter automatically and update your playlists at a regular interval.
 *   It caches the `state.db` file between runs to maintain incremental sync state.
 *   It uses GitHub Secrets to securely inject your API credentials.
 
 ---
 
 ## License
-![Copyright](https://img.shields.io/badge/Copyright-2026_Sajid_Ahmed-limegreen.svg)
+![Copyright](https://img.shields.io/badge/Copyright-2026_Sajid_Ahmed-darkblue.svg)
 
 Copyright (c) 2026 Sajid Ahmed. **All Rights Reserved.**
 
