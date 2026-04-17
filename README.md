@@ -1,4 +1,4 @@
-# Spotify Liked Songs Sorter
+# Spotify Playlist Manager
 
 ![Copyright](https://img.shields.io/badge/Copyright-2026_Sajid_Ahmed-darkblue.svg)
 ![Spotify](https://img.shields.io/badge/Spotify-Web_API-limegreen.svg)
@@ -7,7 +7,7 @@
 ![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)
 
 
-A robust, enterprise-grade automation tool designed to organise your Spotify "Liked Songs" into genre-specific playlists. Engineered for high reliability, it navigates the complexities of the 2026 Spotify API landscape using intelligent synchronisation, strict rate limiting, and persistent state management.
+A robust, enterprise-grade automation tool designed to organise your Spotify "Liked Songs" into genre-specific playlists. Engineered for high reliability, it navigates the complexities of the 2026 Spotify Web API landscape using intelligent synchronisation, strict rate limiting, and persistent state management.
 
 ## Key Features
 
@@ -25,7 +25,7 @@ A robust, enterprise-grade automation tool designed to organise your Spotify "Li
 
 ### Example of a playlist created by the software. 
 <p align="center">
-  <img src="assets/example.png" alt="Playlist example" width="600">
+  <img src="assets/example.png" alt="Playlist example" width="500">
 </p>
 
 ---
@@ -104,8 +104,8 @@ Spotify removed public genre data from their API years ago.
 
 ### 1. Clone & Install
 ```bash
-git clone https://github.com/sahmed0/spotify-sorter.git
-cd spotify-sorter
+git clone https://github.com/sahmed0/spotify-playlist-manager.git
+cd spotify-playlist-manager
 pip install -r requirements.txt
 ```
 
